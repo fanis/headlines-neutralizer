@@ -1,8 +1,9 @@
 // ==UserScript==
 // @name         Neutralize Headlines
 // @namespace    https://fanis.dev/userscripts
-// @author       Fanis
-// @version      1.2.0
+// @author       Fanis Hatzidakis
+// @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
+// @version      1.2.1
 // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -19,6 +20,13 @@
 // @grant        GM_registerMenuCommand
 // @connect      api.openai.com
 // ==/UserScript==
+
+// SPDX-License-Identifier: PolyForm-Internal-Use-1.0.0
+// Copyright (c) 2025 Fanis Hatzidakis
+// License: PolyForm Internal Use License 1.0.0
+// Summary: Free for personal and internal business use. No redistribution, resale,
+// or offering as a service without a separate commercial license from the author.
+// Full text: https://polyformproject.org/licenses/internal-use/1.0.0/
 
 (async () => {
   'use strict';

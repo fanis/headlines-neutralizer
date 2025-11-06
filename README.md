@@ -1,5 +1,42 @@
 # Neutralize Headlines Userscript - Setup & Usage Guide
 
+## Table of Contents
+- [What It Does](#what-it-does)
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [How It Works](#how-it-works)
+  - [Automatic Detection](#automatic-detection)
+  - [Processing Flow](#processing-flow)
+- [Using the Badge](#using-the-badge)
+- [Menu Options](#menu-options)
+  - [Configuration](#configuration)
+  - [Domain Controls](#domain-controls)
+  - [Toggles](#toggles)
+  - [Actions](#actions)
+- [Configuration Tips](#configuration-tips)
+  - [Selectors](#selectors)
+  - [Domain-Specific Setup](#domain-specific-setup)
+- [Troubleshooting](#troubleshooting)
+  - [Script Not Working](#script-not-working)
+  - [Headlines Not Detected](#headlines-not-detected)
+  - [Too Many/Wrong Elements Processed](#too-manywrong-elements-processed)
+  - [API Errors](#api-errors)
+  - [Publisher Opt-Out](#publisher-opt-out)
+- [Privacy & Storage](#privacy--storage)
+  - [Data Storage](#data-storage)
+  - [What's Sent to OpenAI](#whats-sent-to-openai)
+- [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Advanced Configuration](#advanced-configuration)
+  - [Change AI Model](#change-ai-model)
+  - [Adjust Batch Size](#adjust-batch-size)
+  - [Disable Highlight Animation](#disable-highlight-animation)
+  - [Change Detection Sensitivity](#change-detection-sensitivity)
+- [Support & Feedback](#support--feedback)
+- [Tips for Best Results](#tips-for-best-results)
+- [Provenance](#provenance)
+- [Licence](#licence)
+
 ##  What It Does
 
   This userscript automatically detects and neutralizes sensationalist headlines on websites using
@@ -258,3 +295,12 @@ topKPerCard: 1,      // Increase to 2-3 for multiple headlines per card
 ## Provenance
 This UserScript was authored by [Fanis Hatzidakis](https://github.com/fanis/headlines-neutralizer) with assistance from large-language-model tooling (ChatGPT and Claude Code). 
 All code was reviewed, tested, and adapted by Fanis.
+
+
+## Licence
+
+Copyright (c) 2025 Fanis Hatzidakis
+
+Licensed under PolyForm Internal Use License 1.0.0
+
+See LICENCE.md
