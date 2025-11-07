@@ -3,8 +3,8 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      1.2.1
-// @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, domain allow/deny, caching, Android-safe storage.
+// @version      1.3.0
+// @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
 // @exclude      moz-extension:*
@@ -104,12 +104,23 @@
   };
 
   // ───────────────────────── PERSISTED LISTS ─────────────────────────
-  const SELECTORS_KEY = 'neutralizer_selectors_v1'; // inclusions
+  const SELECTORS_KEY = 'neutralizer_selectors_v1'; // global defaults
   const DEFAULT_SELECTORS = ['h1','h2','h3','.lead','[itemprop="headline"]','[role="heading"]','.title','.title a','.summary','.hn__title-container h2 a','.article-title'];
-  let SELECTORS = DEFAULT_SELECTORS.slice();
+  let SELECTORS_GLOBAL = DEFAULT_SELECTORS.slice();
+  let SELECTORS_DOMAIN = []; // domain-specific additions
+  let SELECTORS = []; // merged result
 
-  const EXCLUDES_KEY = 'neutralizer_excludes_v1';
-  let EXCLUDE = { self: [], ancestors: ['header','footer','nav','aside','[role="navigation"]','.breadcrumbs','[aria-label*="breadcrumb" i]'] };
+  const EXCLUDES_KEY = 'neutralizer_excludes_v1'; // global defaults
+  const DEFAULT_EXCLUDES = { self: [], ancestors: ['header','footer','nav','aside','[role="navigation"]','.breadcrumbs','[aria-label*="breadcrumb" i]'] };
+  let EXCLUDE_GLOBAL = { ...DEFAULT_EXCLUDES, ancestors: [...DEFAULT_EXCLUDES.ancestors] };
+  let EXCLUDE_DOMAIN = { self: [], ancestors: [] }; // domain-specific additions
+  let EXCLUDE = { self: [], ancestors: [] }; // merged result
+
+  // Per-domain configuration (additive)
+  const DOMAIN_SELECTORS_KEY = 'neutralizer_domain_selectors_v2'; // { 'hostname': [...] }
+  const DOMAIN_EXCLUDES_KEY = 'neutralizer_domain_excludes_v2'; // { 'hostname': { self: [...], ancestors: [...] } }
+  let DOMAIN_SELECTORS = {};
+  let DOMAIN_EXCLUDES = {};
 
   const DOMAINS_MODE_KEY    = 'neutralizer_domains_mode_v1';     // 'deny' | 'allow'
   const DOMAINS_DENY_KEY    = 'neutralizer_domains_excluded_v1'; // array of patterns
@@ -141,8 +152,36 @@
   let cacheDirty = false;
 
   // Load persisted data
-  try { SELECTORS = JSON.parse(await storage.get(SELECTORS_KEY, JSON.stringify(DEFAULT_SELECTORS))); } catch {}
-  try { EXCLUDE   = JSON.parse(await storage.get(EXCLUDES_KEY, JSON.stringify(EXCLUDE))); } catch {}
+  // Load global settings
+  try { SELECTORS_GLOBAL = JSON.parse(await storage.get(SELECTORS_KEY, JSON.stringify(DEFAULT_SELECTORS))); } catch {}
+  try { EXCLUDE_GLOBAL = JSON.parse(await storage.get(EXCLUDES_KEY, JSON.stringify(DEFAULT_EXCLUDES))); } catch {}
+
+  // Load per-domain additions
+  try { DOMAIN_SELECTORS = JSON.parse(await storage.get(DOMAIN_SELECTORS_KEY, '{}')); } catch {}
+  try { DOMAIN_EXCLUDES = JSON.parse(await storage.get(DOMAIN_EXCLUDES_KEY, '{}')); } catch {}
+
+  // Load domain-specific settings for current host
+  if (DOMAIN_SELECTORS[HOST]) {
+    SELECTORS_DOMAIN = DOMAIN_SELECTORS[HOST];
+  }
+  if (DOMAIN_EXCLUDES[HOST]) {
+    EXCLUDE_DOMAIN = DOMAIN_EXCLUDES[HOST];
+  }
+
+  // Merge global + domain-specific
+  SELECTORS = [...new Set([...SELECTORS_GLOBAL, ...SELECTORS_DOMAIN])]; // deduplicate
+  EXCLUDE = {
+    self: [...new Set([...EXCLUDE_GLOBAL.self, ...EXCLUDE_DOMAIN.self])],
+    ancestors: [...new Set([...EXCLUDE_GLOBAL.ancestors, ...EXCLUDE_DOMAIN.ancestors])]
+  };
+
+  if (SELECTORS_DOMAIN.length > 0 || EXCLUDE_DOMAIN.self.length > 0 || EXCLUDE_DOMAIN.ancestors.length > 0) {
+    log('domain-specific additions for', HOST, ':', {
+      selectors: SELECTORS_DOMAIN,
+      excludes: EXCLUDE_DOMAIN
+    });
+  }
+
   try { DOMAINS_MODE = await storage.get(DOMAINS_MODE_KEY, 'deny'); } catch {}
   try { DOMAIN_DENY  = JSON.parse(await storage.get(DOMAINS_DENY_KEY, JSON.stringify(DOMAIN_DENY))); } catch {}
   try { DOMAIN_ALLOW = JSON.parse(await storage.get(DOMAINS_ALLOW_KEY, JSON.stringify(DOMAIN_ALLOW))); } catch {}
@@ -683,24 +722,27 @@
     openInfo(`Unknown error${s ? ' ('+s+')' : ''}. Check your network or try again.`);
   }
 
-  // ───────────────────────── POLYMORPHIC EDITOR (list/secret) ─────────────────────────
+  // ───────────────────────── POLYMORPHIC EDITOR (list/secret/domain) ─────────────────────────
   function parseLines(s) { return s.split(/[\n,;]+/).map(x => x.trim()).filter(Boolean); }
 
-  function openEditor({ title, hint = 'One item per line', mode = 'list', initial = [], onSave, onValidate }) {
+  function openEditor({ title, hint = 'One item per line', mode = 'list', initial = [], globalItems = [], onSave, onValidate }) {
     const host = document.createElement('div'); host.setAttribute(UI_ATTR, '');
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
     style.textContent = `
       .wrap{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.45);
             display:flex;align-items:center;justify-content:center}
-      .modal{background:#fff;max-width:640px;width:92%;border-radius:10px;
-             box-shadow:0 10px 40px rgba(0,0,0,.35);padding:16px 16px 12px}
+      .modal{background:#fff;max-width:680px;width:92%;border-radius:10px;
+             box-shadow:0 10px 40px rgba(0,0,0,.35);padding:16px 16px 12px;box-sizing:border-box}
       .modal h3{margin:0 0 8px;font:600 16px/1.2 system-ui,sans-serif}
-      textarea{width:100%;height:220px;resize:vertical;padding:10px;
-               font:13px/1.4 ui-monospace,Consolas,monospace}
+      .section-label{font:600 13px/1.2 system-ui,sans-serif;margin:8px 0 4px;color:#444}
+      textarea{width:100%;height:220px;resize:vertical;padding:10px;box-sizing:border-box;
+               font:13px/1.4 ui-monospace,Consolas,monospace;border:1px solid #ccc;border-radius:4px}
+      textarea.readonly{background:#f5f5f5;color:#666;height:120px}
+      textarea.editable{height:180px}
       .row{display:flex;gap:8px;align-items:center}
       input[type=password],input[type=text]{flex:1;padding:10px;border-radius:8px;border:1px solid #ccc;
-               font:14px/1.3 ui-monospace,Consolas,monospace}
+               font:14px/1.3 ui-monospace,Consolas,monospace;box-sizing:border-box}
       .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
       .actions button{padding:8px 12px;border-radius:8px;border:1px solid #d0d0d0;background:#f6f6f6;cursor:pointer}
       .actions .save{background:#1a73e8;color:#fff;border-color:#1a73e8}
@@ -711,6 +753,12 @@
     const bodyList = `<textarea spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">${
       Array.isArray(initial) ? initial.join('\n') : ''
     }</textarea>`;
+    const bodyDomain = `
+      <div class="section-label">Global settings (read-only):</div>
+      <textarea class="readonly" readonly spellcheck="false">${Array.isArray(globalItems) ? globalItems.join('\n') : ''}</textarea>
+      <div class="section-label">Domain-specific additions (editable):</div>
+      <textarea class="editable" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">${Array.isArray(initial) ? initial.join('\n') : ''}</textarea>
+    `;
     const bodySecret = `
       <div class="row">
         <input id="sec" type="password" placeholder="sk-..." autocomplete="off" />
@@ -719,7 +767,7 @@
     wrap.innerHTML = `
       <div class="modal" role="dialog" aria-modal="true" aria-label="${title}">
         <h3>${title}</h3>
-        ${mode === 'secret' ? bodySecret : bodyList}
+        ${mode === 'secret' ? bodySecret : (mode === 'domain' ? bodyDomain : bodyList)}
         <div class="actions">
           ${mode === 'secret' && onValidate ? '<button class="test">Validate</button>' : ''}
           <button class="save">Save</button>
@@ -745,6 +793,15 @@
       wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
       shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); btnSave.click(); } });
       inp.focus();
+    } else if (mode === 'domain') {
+      const ta = shadow.querySelector('textarea.editable');
+      const btnSave = shadow.querySelector('.save');
+      const btnCancel = shadow.querySelector('.cancel');
+      btnSave.addEventListener('click', async () => { const lines = parseLines(ta.value); await onSave?.(lines); close(); });
+      btnCancel.addEventListener('click', close);
+      wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+      shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); btnSave.click(); } });
+      ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length;
     } else {
       const ta = shadow.querySelector('textarea');
       const btnSave = shadow.querySelector('.save');
@@ -801,45 +858,94 @@
     });
   });
 
-  GM_registerMenuCommand?.('Edit TARGET selectors (multiline)', () => {
+  // Global settings
+  GM_registerMenuCommand?.('Edit GLOBAL target selectors', () => {
     openEditor({
-      title: 'Target selectors (elements to rewrite)',
+      title: 'Global target selectors (all domains)',
       mode: 'list',
-      initial: SELECTORS,
-      hint: 'One CSS selector per line (e.g., h1, h2, h3, .lead, [itemprop="headline"])',
+      initial: SELECTORS_GLOBAL,
+      hint: 'One CSS selector per line (e.g., h1, h2, h3, .lead). Applied to all domains.',
       onSave: async (lines) => {
         const clean = lines.filter(Boolean).map(s => s.trim()).filter(Boolean);
-        SELECTORS = clean.length ? clean : DEFAULT_SELECTORS.slice();
-        await storage.set(SELECTORS_KEY, JSON.stringify(SELECTORS));
-        resetAndReindex(); processVisibleNow();
+        SELECTORS_GLOBAL = clean.length ? clean : DEFAULT_SELECTORS.slice();
+        await storage.set(SELECTORS_KEY, JSON.stringify(SELECTORS_GLOBAL));
+        location.reload();
       }
     });
   });
 
-  GM_registerMenuCommand?.('Edit EXCLUDES: elements (self)', () => {
+  GM_registerMenuCommand?.('Edit GLOBAL excludes: elements (self)', () => {
     openEditor({
-      title: 'Excluded ELEMENT selectors (self)',
+      title: 'Global excluded elements (all domains)',
       mode: 'list',
-      initial: EXCLUDE.self || [],
-      hint: 'One CSS selector per line (e.g., .sponsored, .ad-title, h4.category). These elements are skipped.',
+      initial: EXCLUDE_GLOBAL.self || [],
+      hint: 'One CSS selector per line (e.g., .sponsored, .ad-title). Applied to all domains.',
       onSave: async (lines) => {
-        EXCLUDE.self = lines;
-        await storage.set(EXCLUDES_KEY, JSON.stringify(EXCLUDE));
-        resetAndReindex(); processVisibleNow();
+        EXCLUDE_GLOBAL.self = lines;
+        await storage.set(EXCLUDES_KEY, JSON.stringify(EXCLUDE_GLOBAL));
+        location.reload();
       }
     });
   });
 
-  GM_registerMenuCommand?.('Edit EXCLUDES: containers (ancestors)', () => {
+  GM_registerMenuCommand?.('Edit GLOBAL excludes: containers (ancestors)', () => {
     openEditor({
-      title: 'Excluded CONTAINERS (ancestors)',
+      title: 'Global excluded containers (all domains)',
       mode: 'list',
-      initial: EXCLUDE.ancestors || [],
-      hint: 'One per line (e.g., header, footer, nav, aside, [role="navigation"], .breadcrumbs). Anything inside is skipped.',
+      initial: EXCLUDE_GLOBAL.ancestors || [],
+      hint: 'One per line (e.g., header, footer, nav, aside). Applied to all domains.',
       onSave: async (lines) => {
-        EXCLUDE.ancestors = lines;
-        await storage.set(EXCLUDES_KEY, JSON.stringify(EXCLUDE));
-        resetAndReindex(); processVisibleNow();
+        EXCLUDE_GLOBAL.ancestors = lines;
+        await storage.set(EXCLUDES_KEY, JSON.stringify(EXCLUDE_GLOBAL));
+        location.reload();
+      }
+    });
+  });
+
+  // Domain-specific settings (additions)
+  GM_registerMenuCommand?.(`Edit DOMAIN additions: target selectors (${HOST})`, () => {
+    openEditor({
+      title: `Domain-specific target selectors for ${HOST}`,
+      mode: 'domain',
+      initial: SELECTORS_DOMAIN,
+      globalItems: SELECTORS_GLOBAL,
+      hint: 'Domain-specific selectors are added to global ones. Edit only the bottom section.',
+      onSave: async (lines) => {
+        DOMAIN_SELECTORS[HOST] = lines;
+        await storage.set(DOMAIN_SELECTORS_KEY, JSON.stringify(DOMAIN_SELECTORS));
+        location.reload();
+      }
+    });
+  });
+
+  GM_registerMenuCommand?.(`Edit DOMAIN additions: excludes elements (${HOST})`, () => {
+    openEditor({
+      title: `Domain-specific excluded elements for ${HOST}`,
+      mode: 'domain',
+      initial: EXCLUDE_DOMAIN.self || [],
+      globalItems: EXCLUDE_GLOBAL.self || [],
+      hint: 'Domain-specific excludes are added to global ones. Edit only the bottom section.',
+      onSave: async (lines) => {
+        if (!DOMAIN_EXCLUDES[HOST]) DOMAIN_EXCLUDES[HOST] = { self: [], ancestors: [] };
+        DOMAIN_EXCLUDES[HOST].self = lines;
+        await storage.set(DOMAIN_EXCLUDES_KEY, JSON.stringify(DOMAIN_EXCLUDES));
+        location.reload();
+      }
+    });
+  });
+
+  GM_registerMenuCommand?.(`Edit DOMAIN additions: excludes containers (${HOST})`, () => {
+    openEditor({
+      title: `Domain-specific excluded containers for ${HOST}`,
+      mode: 'domain',
+      initial: EXCLUDE_DOMAIN.ancestors || [],
+      globalItems: EXCLUDE_GLOBAL.ancestors || [],
+      hint: 'Domain-specific excludes are added to global ones. Edit only the bottom section.',
+      onSave: async (lines) => {
+        if (!DOMAIN_EXCLUDES[HOST]) DOMAIN_EXCLUDES[HOST] = { self: [], ancestors: [] };
+        DOMAIN_EXCLUDES[HOST].ancestors = lines;
+        await storage.set(DOMAIN_EXCLUDES_KEY, JSON.stringify(DOMAIN_EXCLUDES));
+        location.reload();
       }
     });
   });

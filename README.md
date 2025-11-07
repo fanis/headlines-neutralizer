@@ -1,5 +1,7 @@
 # Neutralize Headlines Userscript - Setup & Usage Guide
 
+> **Latest Version**: 1.3.0 | [See What's New](CHANGELOG.md)
+
 ## Table of Contents
 - [What It Does](#what-it-does)
 - [Features](#features)
@@ -45,7 +47,8 @@
 
 ##  Features:
   - Automatic headline detection using smart heuristics
-  - Manual CSS selector configuration for specific sites
+  - Global + per-domain CSS selector configuration
+  - Per-domain additions to selectors and exclusions
   - Per-domain enable/disable control (allowlist or denylist mode)
   - Intelligent caching to minimize API calls
   - On-page badge to restore/reapply changes
@@ -126,13 +129,22 @@
 
 ###  Configuration
 
-  - Set / Validate OpenAI API key - Add or test your API key
-  - Edit TARGET selectors - CSS selectors for elements to rewrite (one per line)
+  - **Set / Validate OpenAI API key** - Add or test your API key
+
+  **Global Settings** (apply to all domains):
+  - **Edit GLOBAL target selectors** - Base CSS selectors for all websites
     - Examples: `h1, h2, .article-title, [itemprop="headline"]`
-  - Edit EXCLUDES: elements (self) - Skip specific elements
+  - **Edit GLOBAL excludes: elements (self)** - Base element exclusions for all websites
     - Examples: `.sponsored, .ad-title, h4.category`
-  - Edit EXCLUDES: containers (ancestors) - Skip everything inside containers
+  - **Edit GLOBAL excludes: containers (ancestors)** - Base container exclusions for all websites
     - Examples: `header, footer, nav, aside`
+
+  **Domain-Specific Additions** (for current domain only):
+  - **Edit DOMAIN additions: target selectors** - Additional selectors for this domain
+    - Shows global settings (read-only) + domain additions (editable)
+    - Domain selectors are added to global ones (not replaced)
+  - **Edit DOMAIN additions: excludes elements** - Additional element exclusions for this domain
+  - **Edit DOMAIN additions: excludes containers** - Additional container exclusions for this domain
 
 ###  Domain Controls
 
@@ -159,23 +171,81 @@
   ---
 ##  Configuration Tips
 
-### Selectors
+### Global vs Domain-Specific Configuration
 
-  Try Auto-detection first (enabled by default) and if it doesn't work consider these tips.
+  **How it works:**
+  - **Global settings** apply to all websites by default
+  - **Domain-specific additions** are added on top of global settings for specific domains
+  - Final selectors = Global + Domain-specific (merged together)
 
-  If a site has predictable headline selectors, add them manually:
+  **Best practices:**
+  1. Set up global selectors that work on most sites (h1, h2, h3, etc.)
+  2. Add domain-specific selectors only when a site needs special handling
+  3. Use global excludes for common patterns (header, footer, nav)
+  4. Use domain excludes for site-specific elements to skip
 
-  1. Right-click a headline → "Inspect Element"
-  2. Note the CSS selector (e.g., `.story-headline`)
-  3. Menu → "Edit TARGET selectors"
-  4. Add the selector on a new line
+  **Example workflow:**
+  - Global selectors: `h1, h2, h3, .article-title`
+  - Visit reddit.com → Add domain selector: `.post-title`
+  - Visit news.ycombinator.com → Add domain selector: `.storylink`
+  - Each domain gets: Global selectors + Their specific additions
 
-  To exclude specific sections, for example to revent navigation, footers, or sidebars from being processed:
+### Understanding the Domain-Specific Editor
 
-  1. Menu → "Edit EXCLUDES: containers (ancestors)"
-  2. Add: nav, footer, aside, .sidebar
+  When you open a **domain-specific** editor, you'll see two sections:
 
-###  Domain-Specific Setup
+  ```
+  ┌─────────────────────────────────────────────┐
+  │ Global settings (read-only):                │
+  │ ┌─────────────────────────────────────────┐ │
+  │ │ h1                                      │ │ ← Gray background
+  │ │ h2                                      │ │   Cannot edit
+  │ │ h3                                      │ │
+  │ └─────────────────────────────────────────┘ │
+  │                                             │
+  │ Domain-specific additions (editable):       │
+  │ ┌─────────────────────────────────────────┐ │
+  │ │ .post-title                             │ │ ← White background
+  │ │ .story-headline                         │ │   Edit here
+  │ │                                         │ │
+  │ └─────────────────────────────────────────┘ │
+  └─────────────────────────────────────────────┘
+  ```
+
+  - **Top section**: Shows global settings for reference (read-only, gray)
+  - **Bottom section**: Add domain-specific selectors (editable, white)
+  - Final result combines both sections
+
+### Adding Selectors
+
+  Try Auto-detection first (enabled by default). If it doesn't work, add manual selectors:
+
+  **For all websites:**
+  1. Menu → "Edit GLOBAL target selectors"
+  2. Add common selectors like: `h1, h2, h3, .headline`
+
+  **For a specific website:**
+  1. Visit the website
+  2. Right-click a headline → "Inspect Element"
+  3. Note the CSS selector (e.g., `.story-headline`)
+  4. Menu → "Edit DOMAIN additions: target selectors (hostname)"
+  5. Add the selector in the **bottom editable section**
+  6. The top section shows global selectors for reference (read-only)
+
+### Adding Exclusions
+
+  To exclude specific sections from processing:
+
+  **Global exclusions (all websites):**
+  1. Menu → "Edit GLOBAL excludes: containers (ancestors)"
+  2. Add: `nav, footer, aside, .sidebar`
+
+  **Domain-specific exclusions:**
+  1. Visit the website
+  2. Menu → "Edit DOMAIN additions: excludes containers (hostname)"
+  3. Add site-specific containers to exclude
+
+###  Domain Enable/Disable Controls
 
   Allowlist Mode (safest):
   - Menu → Switch to "Allowlist only"
@@ -199,15 +269,20 @@
 
 ###  Headlines Not Detected
 
-  1. Try manual selectors: Inspect the page and add CSS selectors
+  1. Try manual selectors:
+     - For all sites: Menu → "Edit GLOBAL target selectors"
+     - For this site only: Menu → "Edit DOMAIN additions: target selectors"
   2. Adjust exclusions: You might be excluding too much
+     - Check both global and domain-specific exclusions
   3. Check if publisher opted out: Console will show "publisher opt-out detected"
 
 ###  Too Many/Wrong Elements Processed
 
   1. Disable auto-detect: Menu → "Toggle auto-detect (OFF)"
   2. Use only manual selectors for precise targeting
-  3. Add problematic elements to EXCLUDES
+  3. Add problematic elements to exclusions:
+     - For all sites: Menu → "Edit GLOBAL excludes"
+     - For this site only: Menu → "Edit DOMAIN additions: excludes"
 
 ###  API Errors
 
@@ -228,6 +303,8 @@
 
 ###  Data Storage:
   - API key: Stored locally (GM storage → localStorage → memory fallback)
+  - Global settings: Stored locally in your browser
+  - Domain-specific settings: Stored locally per-domain
   - Cache: Stored locally, per-domain, up to 1500 entries
   - Nothing is sent to external servers except OpenAI API calls
 
@@ -284,10 +361,12 @@ topKPerCard: 1,      // Increase to 2-3 for multiple headlines per card
 ##  Tips for Best Results
 
   1. Start with auto-detect ON - Let the script learn the site structure
-  2. Check the diff audit - Verify neutralizations are accurate
-  3. Use allowlist mode for sensitive sites - Avoid false positives
-  4. Keep cache enabled - Dramatically reduces API costs on revisits
-  5. Toggle badge OFF for clean UI - Access controls via menu instead
+  2. Set up global selectors first - Use settings that work on most sites
+  3. Add domain-specific selectors sparingly - Only for sites that need special handling
+  4. Check the diff audit - Verify neutralizations are accurate
+  5. Use allowlist mode for sensitive sites - Avoid false positives
+  6. Keep cache enabled - Dramatically reduces API costs on revisits
+  7. Toggle badge OFF for clean UI - Access controls via menu instead
 
   ---
 
