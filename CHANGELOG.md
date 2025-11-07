@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Menu reorganized to separate global and domain-specific settings
 - Domain configurations now show global settings for reference while editing
 
+### Improved
+- API key save button now shows "Saved" feedback and auto-closes after 1 second
+- Validation result dialogs now show only a "Close" button instead of confusing "Save/Cancel"
+- Informational dialogs can be closed with Enter, Escape, or clicking outside
+
 ### Documentation
 - Added guide for using global vs domain-specific configuration
 - Updated configuration instructions with examples

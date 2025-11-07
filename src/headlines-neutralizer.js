@@ -764,14 +764,31 @@
         <input id="sec" type="password" placeholder="sk-..." autocomplete="off" />
         <button id="toggle" title="Show/Hide">👁</button>
       </div>`;
+    const bodyInfo = `<textarea class="readonly" readonly spellcheck="false" style="height:auto;min-height:60px;max-height:300px;">${
+      Array.isArray(initial) ? initial.join('\n') : String(initial)
+    }</textarea>`;
+
+    let bodyContent, actionsContent;
+    if (mode === 'info') {
+      bodyContent = bodyInfo;
+      actionsContent = '<button class="cancel">Close</button>';
+    } else if (mode === 'secret') {
+      bodyContent = bodySecret;
+      actionsContent = (onValidate ? '<button class="test">Validate</button>' : '') + '<button class="save">Save</button><button class="cancel">Cancel</button>';
+    } else if (mode === 'domain') {
+      bodyContent = bodyDomain;
+      actionsContent = '<button class="save">Save</button><button class="cancel">Cancel</button>';
+    } else {
+      bodyContent = bodyList;
+      actionsContent = '<button class="save">Save</button><button class="cancel">Cancel</button>';
+    }
+
     wrap.innerHTML = `
       <div class="modal" role="dialog" aria-modal="true" aria-label="${title}">
         <h3>${title}</h3>
-        ${mode === 'secret' ? bodySecret : (mode === 'domain' ? bodyDomain : bodyList)}
+        ${bodyContent}
         <div class="actions">
-          ${mode === 'secret' && onValidate ? '<button class="test">Validate</button>' : ''}
-          <button class="save">Save</button>
-          <button class="cancel">Cancel</button>
+          ${actionsContent}
         </div>
         <p class="hint">${hint}</p>
       </div>`;
@@ -779,7 +796,14 @@
     document.body.appendChild(host);
     const close = () => host.remove();
 
-    if (mode === 'secret') {
+    if (mode === 'info') {
+      const btnClose = shadow.querySelector('.cancel');
+      btnClose.addEventListener('click', close);
+      wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+      shadow.addEventListener('keydown', e => {
+        if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); close(); }
+      });
+    } else if (mode === 'secret') {
       const inp = shadow.querySelector('#sec');
       const btnSave = shadow.querySelector('.save');
       const btnCancel = shadow.querySelector('.cancel');
@@ -787,7 +811,15 @@
       const btnTest = shadow.querySelector('.test');
       if (typeof initial === 'string' && initial) inp.value = initial;
       btnToggle.addEventListener('click', () => { inp.type = (inp.type === 'password') ? 'text' : 'password'; inp.focus(); });
-      btnSave.addEventListener('click', async () => { const v = inp.value.trim(); if (!v) return; await onSave?.(v); close(); });
+      btnSave.addEventListener('click', async () => {
+        const v = inp.value.trim();
+        if (!v) return;
+        await onSave?.(v);
+        btnSave.textContent = 'Saved';
+        btnSave.style.background = '#34a853';
+        btnSave.style.borderColor = '#34a853';
+        setTimeout(close, 1000);
+      });
       btnCancel.addEventListener('click', close);
       btnTest?.addEventListener('click', async () => { await onValidate?.(inp.value.trim()); });
       wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
@@ -815,7 +847,7 @@
   }
 
   function openInfo(message) {
-    openEditor({ title: 'Neutralizer', mode: 'list', initial: [message], hint: 'Close when done.' , onSave: () => {} });
+    openEditor({ title: 'Neutralizer', mode: 'info', initial: message, hint: 'Press Enter or Escape to close.' });
   }
 
   function openKeyDialog(extra) {
