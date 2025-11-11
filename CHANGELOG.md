@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.4.0] - 2025-11-11
+
+### Added
+- Neutralization strength control with 5 preset levels (Minimal, Light, Moderate, Strong, Maximum)
+- Interactive dialog for selecting neutralization strength via menu
+- Temperature setting persists across sessions and page loads
+- Visual indication of current strength level in menu
+- Users can now fine-tune how aggressively headlines are neutralized
+- Lower temperature values (Minimal/Light) preserve more of the original meaning
+- Higher values (Strong/Maximum) provide more aggressive neutralization
+
+
+
 ## [1.3.0] - 2025-11-07
 
 ### Added

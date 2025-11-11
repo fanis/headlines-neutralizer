@@ -1,6 +1,6 @@
 # Neutralize Headlines Userscript - Setup & Usage Guide
 
-> **Latest Version**: 1.3.0 | [See What's New](CHANGELOG.md)
+> **Latest Version**: 1.4.0 | [See What's New](CHANGELOG.md)
 
 ## Table of Contents
 - [What It Does](#what-it-does)
@@ -47,6 +47,7 @@
 
 ##  Features:
   - Automatic headline detection using smart heuristics
+  - Adjustable neutralization strength (5 levels from Minimal to Maximum)
   - Global + per-domain CSS selector configuration
   - Per-domain additions to selectors and exclusions
   - Per-domain enable/disable control (allowlist or denylist mode)
@@ -156,6 +157,15 @@
 
 ###  Toggles
 
+  - **Neutralization strength** - Adjust how aggressively headlines are rewritten
+    - Opens a dialog with 5 levels to choose from:
+      - **Minimal (0.0)** - Most conservative, preserves original meaning closely
+      - **Light (0.1)** - Subtle neutralization with minimal changes
+      - **Moderate (0.2)** - Balanced approach (default)
+      - **Strong (0.35)** - More aggressive rewriting
+      - **Maximum (0.5)** - Very aggressive neutralization
+    - Current level is shown in menu and highlighted in dialog
+    - Setting persists across sessions
   - Toggle auto-detect (ON/OFF) - Enable/disable automatic headline detection
     - Turn OFF to rely only on manual CSS selectors
   - Toggle DEBUG logs (ON/OFF) - Show detailed console logs

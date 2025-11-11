@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      1.3.0
+// @version      1.4.0
 // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -36,7 +36,7 @@
     model: 'gpt-4o-mini',
     temperature: 0.2,
     maxBatch: 24,
-    DEBUG: true,
+    DEBUG: false,
 
     highlight: true,
     highlightMs: 900,
@@ -129,6 +129,18 @@
   const AUTO_DETECT_KEY     = 'neutralizer_autodetect_v1';
   const SHOW_ORIG_KEY       = 'neutralizer_showorig_v1';
   const SHOW_BADGE_KEY      = 'neutralizer_showbadge_v1';
+  const TEMPERATURE_KEY     = 'neutralizer_temperature_v1';
+
+  // Temperature levels mapping
+  const TEMPERATURE_LEVELS = {
+    'Minimal': 0.0,
+    'Light': 0.1,
+    'Moderate': 0.2,
+    'Strong': 0.35,
+    'Maximum': 0.5
+  };
+  const TEMPERATURE_ORDER = ['Minimal', 'Light', 'Moderate', 'Strong', 'Maximum'];
+  let TEMPERATURE_LEVEL = 'Moderate'; // default level name
 
   // load toggles
   try { const v = await storage.get(DEBUG_KEY, ''); if (v !== '') CFG.DEBUG = (v === true || v === 'true'); } catch {}
@@ -138,9 +150,26 @@
   let SHOW_BADGE = true; // default
   try { const v = await storage.get(SHOW_BADGE_KEY, ''); if (v !== '') SHOW_BADGE = (v === true || v === 'true'); } catch {}
 
+  // load temperature setting
+  try {
+    const v = await storage.get(TEMPERATURE_KEY, '');
+    if (v !== '' && TEMPERATURE_LEVELS[v] !== undefined) {
+      TEMPERATURE_LEVEL = v;
+      CFG.temperature = TEMPERATURE_LEVELS[v];
+    }
+  } catch {}
+
   async function setDebug(on)         { CFG.DEBUG = !!on; await storage.set(DEBUG_KEY, String(CFG.DEBUG)); location.reload(); }
   async function setAutoDetect(on)    { CFG.autoDetect = !!on; await storage.set(AUTO_DETECT_KEY, String(CFG.autoDetect)); location.reload(); }
   async function setShowBadge(on)     { SHOW_BADGE = !!on; await storage.set(SHOW_BADGE_KEY, String(SHOW_BADGE)); location.reload(); }
+
+  async function setTemperature(level) {
+    if (TEMPERATURE_LEVELS[level] === undefined) return;
+    TEMPERATURE_LEVEL = level;
+    CFG.temperature = TEMPERATURE_LEVELS[level];
+    await storage.set(TEMPERATURE_KEY, level);
+    location.reload();
+  }
 
   // domain mode + lists
   let DOMAINS_MODE   = 'deny'; // default
@@ -870,6 +899,64 @@
     });
   }
 
+  function openTemperatureDialog() {
+    const host = document.createElement('div'); host.setAttribute(UI_ATTR, '');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const style = document.createElement('style');
+    style.textContent = `
+      .wrap{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.45);
+            display:flex;align-items:center;justify-content:center}
+      .modal{background:#fff;max-width:520px;width:92%;border-radius:10px;
+             box-shadow:0 10px 40px rgba(0,0,0,.35);padding:20px;box-sizing:border-box}
+      .modal h3{margin:0 0 16px;font:600 16px/1.2 system-ui,sans-serif}
+      .options{display:flex;flex-direction:column;gap:10px}
+      .option-btn{padding:14px 16px;border-radius:8px;border:2px solid #d0d0d0;background:#fff;
+                  cursor:pointer;text-align:left;font:14px/1.4 system-ui,sans-serif;
+                  transition:all 0.15s ease;display:flex;justify-content:space-between;align-items:center}
+      .option-btn:hover{background:#f8f9fa;border-color:#1a73e8}
+      .option-btn.selected{background:#e8f0fe;border-color:#1a73e8;font-weight:600}
+      .option-btn .label{flex:1}
+      .option-btn .value{color:#666;font-size:12px;margin-left:8px}
+      .option-btn .checkmark{color:#1a73e8;margin-left:8px;font-weight:bold}
+      .hint{margin:16px 0 0;color:#666;font:12px/1.4 system-ui,sans-serif;text-align:center}
+    `;
+    const wrap = document.createElement('div'); wrap.className = 'wrap';
+
+    const optionsHTML = TEMPERATURE_ORDER.map(level => {
+      const isSelected = level === TEMPERATURE_LEVEL;
+      const value = TEMPERATURE_LEVELS[level];
+      return `<button class="option-btn ${isSelected ? 'selected' : ''}" data-level="${level}">
+        <span class="label">${level}</span>
+        <span class="value">${value}</span>
+        ${isSelected ? '<span class="checkmark">✓</span>' : ''}
+      </button>`;
+    }).join('');
+
+    wrap.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Neutralization Strength">
+        <h3>Neutralization Strength</h3>
+        <div class="options">
+          ${optionsHTML}
+        </div>
+        <p class="hint">Select how aggressively to neutralize headlines. Lower values preserve more of the original meaning.</p>
+      </div>`;
+
+    shadow.append(style, wrap);
+    document.body.appendChild(host);
+    const close = () => host.remove();
+
+    // Add click handlers to all option buttons
+    shadow.querySelectorAll('.option-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const level = btn.getAttribute('data-level');
+        await setTemperature(level);
+      });
+    });
+
+    wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+    shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+  }
+
   // ───────────────────────── MENUS ─────────────────────────
   // Configuration
   GM_registerMenuCommand?.('--- Configuration ---', () => {});
@@ -1019,6 +1106,7 @@
 
   // Toggles
   GM_registerMenuCommand?.('--- Toggles ---', () => {});
+  GM_registerMenuCommand?.(`Neutralization strength (${TEMPERATURE_LEVEL})`, openTemperatureDialog);
   GM_registerMenuCommand?.(`Toggle auto-detect (${CFG.autoDetect ? 'ON' : 'OFF'})`, async () => { await setAutoDetect(!CFG.autoDetect); });
   GM_registerMenuCommand?.(`Toggle DEBUG logs (${CFG.DEBUG ? 'ON' : 'OFF'})`, async () => { await setDebug(!CFG.DEBUG); });
   GM_registerMenuCommand?.(`Toggle badge (${SHOW_BADGE ? 'ON' : 'OFF'})`, async () => { await setShowBadge(!SHOW_BADGE); });
