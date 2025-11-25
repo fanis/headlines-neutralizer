@@ -3,8 +3,8 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      1.4.0
-// @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
+// @version      1.5.0
+// @description  Tone down sensationalist titles and simplify article body text via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
 // @exclude      moz-extension:*
@@ -130,6 +130,8 @@
   const SHOW_ORIG_KEY       = 'neutralizer_showorig_v1';
   const SHOW_BADGE_KEY      = 'neutralizer_showbadge_v1';
   const TEMPERATURE_KEY     = 'neutralizer_temperature_v1';
+  const SIMPLIFY_BODY_KEY   = 'neutralizer_simplifybody_v1';
+  const SIMPLIFICATION_STRENGTH_KEY = 'neutralizer_simplification_v1';
 
   // Temperature levels mapping
   const TEMPERATURE_LEVELS = {
@@ -142,6 +144,18 @@
   const TEMPERATURE_ORDER = ['Minimal', 'Light', 'Moderate', 'Strong', 'Maximum'];
   let TEMPERATURE_LEVEL = 'Moderate'; // default level name
 
+  // Simplification strength levels mapping
+  const SIMPLIFICATION_LEVELS = {
+    'Minimal': 0.0,
+    'Light': 0.1,
+    'Moderate': 0.2,
+    'Strong': 0.3,
+    'Maximum': 0.4
+  };
+  const SIMPLIFICATION_ORDER = ['Minimal', 'Light', 'Moderate', 'Strong', 'Maximum'];
+  let SIMPLIFICATION_LEVEL = 'Moderate'; // default level name
+  let SIMPLIFICATION_TEMPERATURE = SIMPLIFICATION_LEVELS['Moderate'];
+
   // load toggles
   try { const v = await storage.get(DEBUG_KEY, ''); if (v !== '') CFG.DEBUG = (v === true || v === 'true'); } catch {}
   try { const v = await storage.get(AUTO_DETECT_KEY, ''); if (v !== '') CFG.autoDetect = (v === true || v === 'true'); } catch {}
@@ -149,6 +163,9 @@
 
   let SHOW_BADGE = true; // default
   try { const v = await storage.get(SHOW_BADGE_KEY, ''); if (v !== '') SHOW_BADGE = (v === true || v === 'true'); } catch {}
+
+  let SIMPLIFY_BODY = false; // default off
+  try { const v = await storage.get(SIMPLIFY_BODY_KEY, ''); if (v !== '') SIMPLIFY_BODY = (v === true || v === 'true'); } catch {}
 
   // load temperature setting
   try {
@@ -159,9 +176,19 @@
     }
   } catch {}
 
+  // load simplification strength setting
+  try {
+    const v = await storage.get(SIMPLIFICATION_STRENGTH_KEY, '');
+    if (v !== '' && SIMPLIFICATION_LEVELS[v] !== undefined) {
+      SIMPLIFICATION_LEVEL = v;
+      SIMPLIFICATION_TEMPERATURE = SIMPLIFICATION_LEVELS[v];
+    }
+  } catch {}
+
   async function setDebug(on)         { CFG.DEBUG = !!on; await storage.set(DEBUG_KEY, String(CFG.DEBUG)); location.reload(); }
   async function setAutoDetect(on)    { CFG.autoDetect = !!on; await storage.set(AUTO_DETECT_KEY, String(CFG.autoDetect)); location.reload(); }
   async function setShowBadge(on)     { SHOW_BADGE = !!on; await storage.set(SHOW_BADGE_KEY, String(SHOW_BADGE)); location.reload(); }
+  async function setSimplifyBody(on)  { SIMPLIFY_BODY = !!on; await storage.set(SIMPLIFY_BODY_KEY, String(SIMPLIFY_BODY)); location.reload(); }
 
   async function setTemperature(level) {
     if (TEMPERATURE_LEVELS[level] === undefined) return;
@@ -171,14 +198,29 @@
     location.reload();
   }
 
+  async function setSimplificationStrength(level) {
+    if (SIMPLIFICATION_LEVELS[level] === undefined) return;
+    SIMPLIFICATION_LEVEL = level;
+    SIMPLIFICATION_TEMPERATURE = SIMPLIFICATION_LEVELS[level];
+    await storage.set(SIMPLIFICATION_STRENGTH_KEY, level);
+    location.reload();
+  }
+
   // domain mode + lists
   let DOMAINS_MODE   = 'deny'; // default
   let DOMAIN_DENY    = [];
   let DOMAIN_ALLOW   = [];
 
   const CACHE_KEY = 'neutralizer_cache_v1';
+  const BODY_CACHE_KEY = 'neutralizer_body_cache_v1';
   let CACHE = {};
+  let BODY_CACHE = {};
   let cacheDirty = false;
+  let bodyCacheDirty = false;
+
+  // Body cache config - store fewer articles but more data per article
+  const BODY_CACHE_LIMIT = 30;      // max articles
+  const BODY_CACHE_TRIM_TO = 20;    // trim to this many articles
 
   // Load persisted data
   // Load global settings
@@ -215,6 +257,7 @@
   try { DOMAIN_DENY  = JSON.parse(await storage.get(DOMAINS_DENY_KEY, JSON.stringify(DOMAIN_DENY))); } catch {}
   try { DOMAIN_ALLOW = JSON.parse(await storage.get(DOMAINS_ALLOW_KEY, JSON.stringify(DOMAIN_ALLOW))); } catch {}
   try { CACHE = JSON.parse(await storage.get(CACHE_KEY, '{}')); } catch {}
+  try { BODY_CACHE = JSON.parse(await storage.get(BODY_CACHE_KEY, '{}')); } catch {}
 
   const compiledSelectors = () => SELECTORS.join(',');
 
@@ -430,6 +473,72 @@
     }
   }
   async function cacheClear() { CACHE = {}; await storage.set(CACHE_KEY, JSON.stringify(CACHE)); }
+
+  // ───────────────────────── BODY CACHE ─────────────────────────
+  function simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(36);
+  }
+
+  function getBodyCacheKey(url, paragraphTexts) {
+    // Create a cache key from URL + hash of concatenated paragraph texts
+    const contentHash = simpleHash(paragraphTexts.join('|||'));
+    return `${url}::${contentHash}`;
+  }
+
+  function bodyCacheGet(url, paragraphTexts) {
+    const key = getBodyCacheKey(url, paragraphTexts);
+    const cached = BODY_CACHE[key];
+    if (!cached) return null;
+
+    // Update timestamp for LRU
+    cached.t = Date.now();
+    bodyCacheDirty = true;
+    return cached.simplified;
+  }
+
+  function bodyCacheSet(url, paragraphTexts, simplified) {
+    const key = getBodyCacheKey(url, paragraphTexts);
+    BODY_CACHE[key] = {
+      simplified,
+      t: Date.now(),
+      url,
+      count: paragraphTexts.length
+    };
+    bodyCacheDirty = true;
+
+    const size = Object.keys(BODY_CACHE).length;
+    if (size > BODY_CACHE_LIMIT) {
+      // Trim cache
+      queueMicrotask(() => {
+        const keys = Object.keys(BODY_CACHE);
+        if (keys.length <= BODY_CACHE_LIMIT) return;
+        keys.sort((a,b) => BODY_CACHE[a].t - BODY_CACHE[b].t);
+        const toDrop = Math.max(0, keys.length - BODY_CACHE_TRIM_TO);
+        for (let i = 0; i < toDrop; i++) delete BODY_CACHE[keys[i]];
+        storage.set(BODY_CACHE_KEY, JSON.stringify(BODY_CACHE));
+        bodyCacheDirty = false;
+        log('body cache trimmed:', keys.length, '→', Object.keys(BODY_CACHE).length);
+      });
+    } else if (bodyCacheDirty) {
+      clearTimeout(bodyCacheSet._t);
+      bodyCacheSet._t = setTimeout(() => {
+        storage.set(BODY_CACHE_KEY, JSON.stringify(BODY_CACHE));
+        bodyCacheDirty = false;
+      }, 500);
+    }
+  }
+
+  async function bodyCacheClear() {
+    BODY_CACHE = {};
+    await storage.set(BODY_CACHE_KEY, JSON.stringify(BODY_CACHE));
+    log('body cache cleared');
+  }
 
   // ───────────────────────── DISCOVERY ─────────────────────────
   function getManualMatches(root){
@@ -751,6 +860,237 @@
     openInfo(`Unknown error${s ? ' ('+s+')' : ''}. Check your network or try again.`);
   }
 
+  // ───────────────────────── BODY SIMPLIFICATION ─────────────────────────
+  let articleBodyParagraphs = null;
+  let bodySimplified = false;
+
+  function isArticlePage() {
+    // Heuristic: check for article-like structures
+    const articleSelectors = [
+      'article[role="article"]',
+      'article[itemtype*="Article"]',
+      '[role="main"] article',
+      'main article',
+      '.article-body',
+      '.post-content',
+      '.entry-content',
+      '[class*="article-content"]',
+      '[class*="post-body"]',
+      '[itemprop="articleBody"]'
+    ];
+
+    for (const selector of articleSelectors) {
+      if (document.querySelector(selector)) return true;
+    }
+
+    // Additional heuristic: check if there's a long-form content area
+    const mainContent = document.querySelector('article, main, [role="main"]');
+    if (mainContent) {
+      const paragraphs = mainContent.querySelectorAll('p');
+      // If there are 5+ paragraphs with substantial text, likely an article
+      let substantialParagraphs = 0;
+      for (const p of paragraphs) {
+        if (p.textContent.trim().length > 100) substantialParagraphs++;
+        if (substantialParagraphs >= 5) return true;
+      }
+    }
+
+    return false;
+  }
+
+  function extractArticleBody() {
+    // Try multiple strategies to find article body paragraphs
+    const strategies = [
+      // Strategy 1: Look for semantic article body markers
+      () => document.querySelector('[itemprop="articleBody"]'),
+      () => document.querySelector('article[itemtype*="Article"]'),
+      () => document.querySelector('.article-body'),
+      () => document.querySelector('.post-content'),
+      () => document.querySelector('.entry-content'),
+      () => document.querySelector('[class*="article-content"]'),
+      () => document.querySelector('[class*="post-body"]'),
+      // Strategy 2: Look for article or main tags
+      () => document.querySelector('article'),
+      () => document.querySelector('main'),
+      () => document.querySelector('[role="main"]')
+    ];
+
+    let container = null;
+    for (const strategy of strategies) {
+      container = strategy();
+      if (container) break;
+    }
+
+    if (!container) return [];
+
+    // Extract paragraphs, excluding UI elements
+    const paragraphs = Array.from(container.querySelectorAll('p'));
+    return paragraphs.filter(p => {
+      // Filter out short paragraphs (likely UI text)
+      if (p.textContent.trim().length < 50) return false;
+
+      // Filter out paragraphs that are inside excluded containers
+      if (p.closest('[data-neutralizer-ui]')) return false;
+      if (p.closest('.comment, .comments, .sidebar, .navigation, .menu, .footer, .header')) return false;
+
+      // Filter out paragraphs with attributes suggesting they're UI elements
+      if (p.hasAttribute(UI_ATTR)) return false;
+
+      return true;
+    });
+  }
+
+  async function simplifyBodyText(paragraphs) {
+    const KEY = await storage.get('OPENAI_KEY', '');
+    if (!KEY) { openKeyDialog('OpenAI API key missing.'); throw Object.assign(new Error('API key missing'), {status:401}); }
+
+    const texts = paragraphs.map(p => p.textContent.trim());
+    const safeInputs = texts.map(t => t.replace(/[\u2028\u2029]/g, ' '));
+
+    const instructions =
+      'You will receive INPUT as a JSON array of article paragraphs.' +
+      ' Simplify each paragraph by removing convoluted phrasing, excessive jargon, and overly complex or epistemic language.' +
+      ' Make the language clearer and more direct while staying in the SAME language as input.' +
+      ' CRITICAL: Do NOT change facts, numbers, names, quotes, or the actual meaning/details of the content.' +
+      ' If a paragraph contains a direct quote inside quotation marks (English "…", Greek «…», etc.), keep that quoted text VERBATIM word-for-word.' +
+      ' Only simplify the wording and sentence structure to make it easier to read.' +
+      ' Preserve all factual information, statistics, proper nouns, and direct quotes exactly as they appear.' +
+      ' Return ONLY a JSON array of simplified strings, same order and count as input.';
+
+    const body = JSON.stringify({
+      model: CFG.model,
+      temperature: SIMPLIFICATION_TEMPERATURE,
+      max_output_tokens: 4000,
+      instructions,
+      input: JSON.stringify(safeInputs)
+    });
+
+    const resText = await xhrPost('https://api.openai.com/v1/responses', body, apiHeaders(KEY));
+    const payload = JSON.parse(resText);
+    const outStr = extractOutputText(payload);
+    if (!outStr) throw Object.assign(new Error('No output_text/content from API'), {status:400});
+    const cleaned = outStr.replace(/^```json\s*|\s*```$/g, '');
+    const arr = JSON.parse(cleaned);
+    if (!Array.isArray(arr)) throw Object.assign(new Error('API did not return a JSON array'), {status:400});
+    return arr;
+  }
+
+  async function applyBodySimplification(forceApply = false) {
+    if (!forceApply && !SIMPLIFY_BODY) return;
+    if (bodySimplified) return; // Already simplified
+    if (!isArticlePage()) {
+      log('Not an article page, skipping body simplification');
+      return;
+    }
+
+    try {
+      const paragraphs = extractArticleBody();
+      if (!paragraphs.length) {
+        log('No article body paragraphs found');
+        return;
+      }
+
+      log(`Found ${paragraphs.length} article body paragraphs to simplify`);
+
+      // Store original text
+      articleBodyParagraphs = paragraphs;
+
+      // Mark originals before simplifying
+      paragraphs.forEach(p => {
+        if (!p.hasAttribute('data-neutralizer-body-original')) {
+          p.setAttribute('data-neutralizer-body-original', p.textContent);
+        }
+      });
+
+      const paragraphTexts = paragraphs.map(p => p.textContent.trim());
+      const url = location.href;
+
+      // Check cache first
+      const cached = bodyCacheGet(url, paragraphTexts);
+      if (cached && cached.length === paragraphs.length) {
+        log(`Using cached simplification for ${paragraphs.length} paragraphs`);
+        paragraphs.forEach((p, idx) => {
+          if (cached[idx]) {
+            p.textContent = cached[idx];
+            p.setAttribute('data-neutralizer-body-simplified', '1');
+          }
+        });
+        bodySimplified = true;
+        log('Body simplification complete (from cache)');
+        return;
+      }
+
+      // Not in cache - simplify via API in batches
+      const allSimplified = [];
+      const batchSize = 10;
+      for (let i = 0; i < paragraphs.length; i += batchSize) {
+        const batch = paragraphs.slice(i, i + batchSize);
+        const simplified = await simplifyBodyText(batch);
+        allSimplified.push(...simplified);
+
+        batch.forEach((p, idx) => {
+          if (simplified[idx]) {
+            p.textContent = simplified[idx];
+            p.setAttribute('data-neutralizer-body-simplified', '1');
+          }
+        });
+
+        log(`Simplified batch ${Math.floor(i / batchSize) + 1} (${batch.length} paragraphs)`);
+      }
+
+      // Store in cache
+      bodyCacheSet(url, paragraphTexts, allSimplified);
+
+      bodySimplified = true;
+      log('Body simplification complete (via API, cached)');
+    } catch (err) {
+      log('Body simplification error:', err);
+      friendlyApiError(err);
+    }
+  }
+
+  function restoreBodyOriginals() {
+    if (!bodySimplified) return;
+
+    const paragraphs = document.querySelectorAll('[data-neutralizer-body-simplified="1"][data-neutralizer-body-original]');
+    let n = 0;
+    paragraphs.forEach(p => {
+      const orig = p.getAttribute('data-neutralizer-body-original');
+      if (typeof orig === 'string') {
+        p.textContent = orig;
+        n++;
+      }
+    });
+
+    bodySimplified = false;
+    log('Restored original body text on', n, 'paragraphs');
+  }
+
+  function reapplyBodySimplification() {
+    if (!articleBodyParagraphs) return;
+
+    // Try to get from cache
+    const paragraphTexts = articleBodyParagraphs.map(p => p.getAttribute('data-neutralizer-body-original') || p.textContent.trim());
+    const url = location.href;
+    const cached = bodyCacheGet(url, paragraphTexts);
+
+    if (cached && cached.length === articleBodyParagraphs.length) {
+      log('Reapplying body simplification from cache');
+      articleBodyParagraphs.forEach((p, idx) => {
+        if (cached[idx]) {
+          p.textContent = cached[idx];
+          p.setAttribute('data-neutralizer-body-simplified', '1');
+        }
+      });
+      bodySimplified = true;
+    } else {
+      // Not in cache, need to re-simplify
+      log('Cache miss, re-simplifying body text');
+      bodySimplified = false;
+      applyBodySimplification(true);
+    }
+  }
+
   // ───────────────────────── POLYMORPHIC EDITOR (list/secret/domain) ─────────────────────────
   function parseLines(s) { return s.split(/[\n,;]+/).map(x => x.trim()).filter(Boolean); }
 
@@ -957,6 +1297,64 @@
     shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
   }
 
+  function openSimplificationStrengthDialog() {
+    const host = document.createElement('div'); host.setAttribute(UI_ATTR, '');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const style = document.createElement('style');
+    style.textContent = `
+      .wrap{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.45);
+            display:flex;align-items:center;justify-content:center}
+      .modal{background:#fff;max-width:520px;width:92%;border-radius:10px;
+             box-shadow:0 10px 40px rgba(0,0,0,.35);padding:20px;box-sizing:border-box}
+      .modal h3{margin:0 0 16px;font:600 16px/1.2 system-ui,sans-serif}
+      .options{display:flex;flex-direction:column;gap:10px}
+      .option-btn{padding:14px 16px;border-radius:8px;border:2px solid #d0d0d0;background:#fff;
+                  cursor:pointer;text-align:left;font:14px/1.4 system-ui,sans-serif;
+                  transition:all 0.15s ease;display:flex;justify-content:space-between;align-items:center}
+      .option-btn:hover{background:#f8f9fa;border-color:#1a73e8}
+      .option-btn.selected{background:#e8f0fe;border-color:#1a73e8;font-weight:600}
+      .option-btn .label{flex:1}
+      .option-btn .value{color:#666;font-size:12px;margin-left:8px}
+      .option-btn .checkmark{color:#1a73e8;margin-left:8px;font-weight:bold}
+      .hint{margin:16px 0 0;color:#666;font:12px/1.4 system-ui,sans-serif;text-align:center}
+    `;
+    const wrap = document.createElement('div'); wrap.className = 'wrap';
+
+    const optionsHTML = SIMPLIFICATION_ORDER.map(level => {
+      const isSelected = level === SIMPLIFICATION_LEVEL;
+      const value = SIMPLIFICATION_LEVELS[level];
+      return `<button class="option-btn ${isSelected ? 'selected' : ''}" data-level="${level}">
+        <span class="label">${level}</span>
+        <span class="value">${value}</span>
+        ${isSelected ? '<span class="checkmark">✓</span>' : ''}
+      </button>`;
+    }).join('');
+
+    wrap.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Simplification Strength">
+        <h3>Simplification Strength</h3>
+        <div class="options">
+          ${optionsHTML}
+        </div>
+        <p class="hint">Select how aggressively to simplify article body text. Lower values preserve more of the original style.</p>
+      </div>`;
+
+    shadow.append(style, wrap);
+    document.body.appendChild(host);
+    const close = () => host.remove();
+
+    // Add click handlers to all option buttons
+    shadow.querySelectorAll('.option-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const level = btn.getAttribute('data-level');
+        await setSimplificationStrength(level);
+      });
+    });
+
+    wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+    shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+  }
+
   // ───────────────────────── MENUS ─────────────────────────
   // Configuration
   GM_registerMenuCommand?.('--- Configuration ---', () => {});
@@ -1107,45 +1505,86 @@
   // Toggles
   GM_registerMenuCommand?.('--- Toggles ---', () => {});
   GM_registerMenuCommand?.(`Neutralization strength (${TEMPERATURE_LEVEL})`, openTemperatureDialog);
+  GM_registerMenuCommand?.(`Simplification strength (${SIMPLIFICATION_LEVEL})`, openSimplificationStrengthDialog);
   GM_registerMenuCommand?.(`Toggle auto-detect (${CFG.autoDetect ? 'ON' : 'OFF'})`, async () => { await setAutoDetect(!CFG.autoDetect); });
+  GM_registerMenuCommand?.(`Toggle body simplification (${SIMPLIFY_BODY ? 'ON' : 'OFF'})`, async () => { await setSimplifyBody(!SIMPLIFY_BODY); });
   GM_registerMenuCommand?.(`Toggle DEBUG logs (${CFG.DEBUG ? 'ON' : 'OFF'})`, async () => { await setDebug(!CFG.DEBUG); });
   GM_registerMenuCommand?.(`Toggle badge (${SHOW_BADGE ? 'ON' : 'OFF'})`, async () => { await setShowBadge(!SHOW_BADGE); });
 
   // Actions
   GM_registerMenuCommand?.('--- Actions ---', () => {});
-  GM_registerMenuCommand?.('Show what changed (diff audit)', showDiffAudit);
+  GM_registerMenuCommand?.('Show stats & changes (diff audit)', showDiffAudit);
   GM_registerMenuCommand?.('Process visible now', () => { processVisibleNow(); });
-  GM_registerMenuCommand?.('Flush cache & rerun', async () => { await cacheClear(); resetAndReindex(); processVisibleNow(); });
+  GM_registerMenuCommand?.('Flush headline cache & rerun', async () => { await cacheClear(); resetAndReindex(); processVisibleNow(); });
+  GM_registerMenuCommand?.('Flush body simplification cache', async () => { await bodyCacheClear(); location.reload(); });
   GM_registerMenuCommand?.('Reset stats counters', () => { STATS.total = STATS.live = STATS.cache = STATS.batches = 0; CHANGES.length = 0; updateBadgeCounts(); });
 
   // ───────────────────────── BADGE (Calmed / Restore) + Per-site toggle ─────────────────────────
   let badge, badgeState = 'calmed'; // 'calmed' or 'originals'
+  let bodyBadgeState = 'original'; // 'original' or 'simplified'
+
   function ensureBadge() {
     if (badge || (DOMAIN_DISABLED || OPTED_OUT) || !SHOW_BADGE) return;
     badge = document.createElement('div');
     badge.className = 'neutralizer-badge';
     badge.setAttribute(UI_ATTR,'');
+
+    const isArticle = isArticlePage();
+    const bodyRow = isArticle ? `
+      <div class="row">
+        <button class="btn body-action">B: original</button>
+      </div>
+    ` : '';
+
     badge.innerHTML = `
       <div class="row">
-        <button class="btn primary action">Restore original headlines</button>
+        <button class="btn primary action">H: neutral</button>
         <span class="small counts">(0)</span>
       </div>
+      ${bodyRow}
       <div class="provenance">Neutralize Headlines userscript</div>
     `;
     document.body.appendChild(badge);
     badge.querySelector('.action').addEventListener('click', onBadgeAction);
+    if (isArticle) {
+      badge.querySelector('.body-action')?.addEventListener('click', onBodyBadgeAction);
+    }
   }
   function onBadgeAction() {
     if (badgeState === 'calmed') {
       restoreOriginals();
       badgeState = 'originals';
-      badge.querySelector('.action').textContent = 'Neutralize headlines';
+      badge.querySelector('.action').textContent = 'H: original';
     } else {
       reapplyFromCache();
       badgeState = 'calmed';
-      badge.querySelector('.action').textContent = 'Restore original headlines';
+      badge.querySelector('.action').textContent = 'H: neutral';
     }
   }
+
+  function onBodyBadgeAction() {
+    const btn = badge.querySelector('.body-action');
+    if (bodyBadgeState === 'original') {
+      // Simplify body
+      btn.textContent = 'B: simplifying...';
+      btn.disabled = true;
+      applyBodySimplification(true).then(() => {
+        bodyBadgeState = 'simplified';
+        btn.textContent = 'B: simplified';
+        btn.disabled = false;
+      }).catch(err => {
+        log('Body simplification error:', err);
+        btn.textContent = 'B: original';
+        btn.disabled = false;
+      });
+    } else {
+      // Restore original
+      restoreBodyOriginals();
+      bodyBadgeState = 'original';
+      btn.textContent = 'B: original';
+    }
+  }
+
   function updateBadgeCounts() {
     const el = badge?.querySelector('.counts');
     if (el) el.textContent = `(${STATS.total})`;
@@ -1196,7 +1635,23 @@
     const host = document.createElement('div'); host.className = 'neutralizer-audit'; host.setAttribute(UI_ATTR,'');
     const modal = document.createElement('div'); modal.className = 'modal';
     const list = document.createElement('div'); list.className = 'list';
-    modal.innerHTML = `<h3>What changed (this page)</h3>`;
+
+    // Add cache stats section
+    const headlineCacheSize = Object.keys(CACHE).length;
+    const bodyCacheSize = Object.keys(BODY_CACHE).length;
+    const bodyCacheArticles = Object.values(BODY_CACHE).map(c => `${c.url} (${c.count}p)`).join('<br>');
+
+    modal.innerHTML = `
+      <h3>Stats & Changes (this page)</h3>
+      <div style="background:#f5f5f5;padding:10px;border-radius:6px;margin-bottom:12px;font-size:13px;">
+        <strong>Cache Stats:</strong><br>
+        Headlines cached: ${headlineCacheSize} entries<br>
+        Body simplifications cached: ${bodyCacheSize} articles<br>
+        ${bodyCacheSize > 0 ? `<details style="margin-top:6px"><summary style="cursor:pointer">Cached articles</summary><div style="font-size:11px;margin-top:4px;max-height:100px;overflow-y:auto">${bodyCacheArticles}</div></details>` : ''}
+      </div>
+      <h4 style="margin:0 0 8px">Headlines Changed</h4>
+    `;
+
     if (!CHANGES.length) {
       const p = document.createElement('p'); p.textContent = 'No recorded changes yet.'; modal.appendChild(p);
     } else {
@@ -1238,5 +1693,13 @@
   mo.observe(document.body, { childList: true, subtree: true });
 
   processVisibleNow();
+
+  // Apply body simplification if enabled
+  if (SIMPLIFY_BODY && isArticlePage()) {
+    // Delay slightly to let the page settle
+    setTimeout(() => {
+      applyBodySimplification();
+    }, 1000);
+  }
 
 })();

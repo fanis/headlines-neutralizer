@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.0] - 2025-11-25
+
+### Added
+- Article body text simplification feature
+  - Automatically detects article pages vs listing/category pages
+  - Simplifies body paragraphs by removing convoluted phrasing and jargon
+  - Preserves all facts, numbers, names, and direct quotes verbatim
+  - "B: original/simplified" toggle in badge (shown only on article pages)
+  - Simplification strength dialog with 5 levels (Minimal to Maximum)
+  - Toggle body simplification ON/OFF via menu
+- Body simplification caching system
+  - Caches up to 30 articles with LRU eviction
+  - Uses URL + content hash for smart cache invalidation
+  - Instant switching between original/simplified text
+  - Survives page reloads and browser restarts
+  - Cache statistics visible in diff audit dialog
+- Enhanced stats dialog
+  - Shows headline cache size
+  - Shows body cache size with article count
+  - Expandable list of cached articles with paragraph counts
+  - Menu command renamed to "Show stats & changes (diff audit)"
+
+### Changed
+- Badge popup text shortened: "H: neutral/original" instead of full sentences
+- Badge now shows two rows on article pages (headlines + body)
+- Separate cache flush commands for headlines and body text
+
+### Improved
+- Smart article detection using multiple heuristics
+- Body text extraction filters out UI elements, navigation, sidebars
+- Batched API calls (10 paragraphs per batch) to manage rate limits
+- Debounced cache writes to reduce localStorage I/O
+
+
 ## [1.4.0] - 2025-11-11
 
 ### Added

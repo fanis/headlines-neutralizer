@@ -1,6 +1,6 @@
 # Neutralize Headlines Userscript - Setup & Usage Guide
 
-> **Latest Version**: 1.4.0 | [See What's New](CHANGELOG.md)
+> **Latest Version**: 1.5.0 | [See What's New](CHANGELOG.md)
 
 ## Table of Contents
 - [What It Does](#what-it-does)
@@ -45,16 +45,22 @@
   OpenAI's API. It tones down dramatic language while preserving factual content, making your browsing experience
   calmer and more informative.
 
+  **New in 1.5.0:** On article pages, it can also simplify body text by removing convoluted phrasing and jargon
+  while preserving all facts, quotes, and meaning.
+
 ##  Features:
   - Automatic headline detection using smart heuristics
   - Adjustable neutralization strength (5 levels from Minimal to Maximum)
+  - **Article body text simplification** (removes jargon, preserves facts and quotes)
+  - Adjustable simplification strength (5 levels from Minimal to Maximum)
+  - Smart article page detection (only simplifies on article pages, not listings)
   - Global + per-domain CSS selector configuration
   - Per-domain additions to selectors and exclusions
   - Per-domain enable/disable control (allowlist or denylist mode)
-  - Intelligent caching to minimize API calls
-  - On-page badge to restore/reapply changes
+  - Intelligent caching to minimize API calls (separate caches for headlines and body text)
+  - On-page badge to restore/reapply changes (with body simplification toggle on article pages)
   - Visual flash animation when headlines are neutralized
-  - Diff audit to review all changes
+  - Stats dialog shows cache usage and all changes
 
   ---
 ##  Prerequisites
@@ -110,16 +116,27 @@
 
   A small badge appears in the bottom-right corner of pages where headlines have been neutralized:
 
+  **On listing/category pages:**
 ```
   ┌─────────────────────────────────────┐
-  │ [Restore original headlines]  (12) │
+  │ [H: neutral]              (12)      │
   │ Neutralize Headlines userscript     │
   └─────────────────────────────────────┘
 ```
+
+  **On article pages:**
+```
+  ┌─────────────────────────────────────┐
+  │ [H: neutral]              (12)      │
+  │ [B: original]                       │
+  │ Neutralize Headlines userscript     │
+  └─────────────────────────────────────┘
+```
+
   Badge Controls:
-  - "Restore original headlines" - Shows original clickbait text
-  - "Neutralize headlines" - Reapplies neutral versions from cache
-  - (12) - Number of headlines neutralized on this page
+  - **H: neutral / H: original** - Toggle between neutral and original headlines
+  - **B: original / B: simplified** - Toggle between original and simplified body text (article pages only)
+  - **(12)** - Number of headlines neutralized on this page
 
   To hide the badge: Use the menu option "Toggle badge (ON/OFF)"
 
@@ -166,6 +183,18 @@
       - **Maximum (0.5)** - Very aggressive neutralization
     - Current level is shown in menu and highlighted in dialog
     - Setting persists across sessions
+  - **Simplification strength** - Adjust how aggressively body text is simplified
+    - Opens a dialog with 5 levels to choose from:
+      - **Minimal (0.0)** - Most conservative, preserves original style closely
+      - **Light (0.1)** - Subtle simplification with minimal changes
+      - **Moderate (0.2)** - Balanced approach (default)
+      - **Strong (0.3)** - More aggressive simplification
+      - **Maximum (0.4)** - Very aggressive simplification
+    - Current level is shown in menu and highlighted in dialog
+    - Setting persists across sessions
+  - **Toggle body simplification (ON/OFF)** - Auto-simplify body text on article pages
+    - When enabled, body text is automatically simplified on page load
+    - When disabled, you can still manually simplify via the badge button
   - Toggle auto-detect (ON/OFF) - Enable/disable automatic headline detection
     - Turn OFF to rely only on manual CSS selectors
   - Toggle DEBUG logs (ON/OFF) - Show detailed console logs
@@ -173,10 +202,14 @@
 
 ###  Actions
 
-  - Show what changed (diff audit) - View all original → neutralized changes
-  - Process visible now - Manually trigger processing of visible headlines
-  - Flush cache & rerun - Clear cache and reprocess everything
-  - Reset stats counters - Reset the count shown in the badge
+  - **Show stats & changes (diff audit)** - View cache statistics and all changes
+    - Displays headline cache size and body cache size
+    - Shows list of cached articles with paragraph counts
+    - Shows all original → neutralized headline changes on current page
+  - **Process visible now** - Manually trigger processing of visible headlines
+  - **Flush headline cache & rerun** - Clear headline cache and reprocess everything
+  - **Flush body simplification cache** - Clear all cached article simplifications
+  - **Reset stats counters** - Reset the count shown in the badge
 
   ---
 ##  Configuration Tips
