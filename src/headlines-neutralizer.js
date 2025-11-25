@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      1.5.1
+// @version      1.6.0
 // @description  Tone down sensationalist titles and simplify article body text via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -76,6 +76,23 @@
   // Prevent multiple API key dialogs from showing
   let apiKeyDialogShown = false;
 
+  // API token usage tracking (persistent, not cleared with stats)
+  let API_TOKENS = {
+    headlines: { input: 0, output: 0, calls: 0 },
+    body: { input: 0, output: 0, calls: 0 }
+  };
+
+  // API Pricing configuration (user-editable)
+  // Default: gpt-4o-mini pricing as of January 2025
+  // Source: https://openai.com/api/pricing/
+  let PRICING = {
+    model: 'gpt-4o-mini',
+    inputPer1M: 0.15,    // USD per 1M input tokens
+    outputPer1M: 0.60,   // USD per 1M output tokens
+    lastUpdated: '2025-01-25',
+    source: 'https://openai.com/api/pricing/'
+  };
+
   // ───────────────────────── STORAGE (GM → LS → memory) ─────────────────────────
   const MEM = new Map();
   const LS_KEY_NS = '__neutralizer__';
@@ -136,6 +153,8 @@
   const SIMPLIFY_BODY_KEY   = 'neutralizer_simplifybody_v1';
   const SIMPLIFICATION_STRENGTH_KEY = 'neutralizer_simplification_v1';
   const FIRST_INSTALL_KEY   = 'neutralizer_installed_v1';
+  const API_TOKENS_KEY      = 'neutralizer_api_tokens_v1';
+  const PRICING_KEY         = 'neutralizer_pricing_v1';
 
   // Temperature levels mapping
   const TEMPERATURE_LEVELS = {
@@ -262,6 +281,14 @@
   try { DOMAIN_ALLOW = JSON.parse(await storage.get(DOMAINS_ALLOW_KEY, JSON.stringify(DOMAIN_ALLOW))); } catch {}
   try { CACHE = JSON.parse(await storage.get(CACHE_KEY, '{}')); } catch {}
   try { BODY_CACHE = JSON.parse(await storage.get(BODY_CACHE_KEY, '{}')); } catch {}
+  try {
+    const stored = await storage.get(API_TOKENS_KEY, '');
+    if (stored) API_TOKENS = JSON.parse(stored);
+  } catch {}
+  try {
+    const stored = await storage.get(PRICING_KEY, '');
+    if (stored) PRICING = JSON.parse(stored);
+  } catch {}
 
   const compiledSelectors = () => SELECTORS.join(',');
 
@@ -542,6 +569,70 @@
     BODY_CACHE = {};
     await storage.set(BODY_CACHE_KEY, JSON.stringify(BODY_CACHE));
     log('body cache cleared');
+  }
+
+  // ───────────────────────── API TOKEN TRACKING ─────────────────────────
+  function updateApiTokens(type, usage) {
+    if (!usage) return;
+
+    // OpenAI API uses 'input_tokens' and 'output_tokens' (not prompt_tokens/completion_tokens)
+    const inputTokens = usage.input_tokens || usage.prompt_tokens || 0;
+    const outputTokens = usage.output_tokens || usage.completion_tokens || 0;
+
+    if (inputTokens === 0 && outputTokens === 0) {
+      log('WARNING: No token data found in usage object:', usage);
+      return;
+    }
+
+    API_TOKENS[type].input += inputTokens;
+    API_TOKENS[type].output += outputTokens;
+    API_TOKENS[type].calls += 1;
+
+    log(`${type} tokens: +${inputTokens} input, +${outputTokens} output (total: ${API_TOKENS[type].input + API_TOKENS[type].output})`);
+
+    // Debounced save to avoid excessive writes
+    clearTimeout(updateApiTokens._timer);
+    updateApiTokens._timer = setTimeout(() => {
+      storage.set(API_TOKENS_KEY, JSON.stringify(API_TOKENS));
+      log('API tokens updated and saved:', API_TOKENS);
+    }, 1000);
+  }
+
+  async function resetApiTokens() {
+    API_TOKENS = {
+      headlines: { input: 0, output: 0, calls: 0 },
+      body: { input: 0, output: 0, calls: 0 }
+    };
+    await storage.set(API_TOKENS_KEY, JSON.stringify(API_TOKENS));
+    log('API token stats reset');
+  }
+
+  function calculateApiCost() {
+    const inputCost = (API_TOKENS.headlines.input + API_TOKENS.body.input) * PRICING.inputPer1M / 1_000_000;
+    const outputCost = (API_TOKENS.headlines.output + API_TOKENS.body.output) * PRICING.outputPer1M / 1_000_000;
+    return inputCost + outputCost;
+  }
+
+  async function updatePricing(newPricing) {
+    PRICING = {
+      ...PRICING,
+      ...newPricing,
+      lastUpdated: new Date().toISOString().split('T')[0] // YYYY-MM-DD
+    };
+    await storage.set(PRICING_KEY, JSON.stringify(PRICING));
+    log('Pricing updated:', PRICING);
+  }
+
+  async function resetPricingToDefaults() {
+    PRICING = {
+      model: 'gpt-4o-mini',
+      inputPer1M: 0.15,
+      outputPer1M: 0.60,
+      lastUpdated: '2025-01-25',
+      source: 'https://openai.com/api/pricing/'
+    };
+    await storage.set(PRICING_KEY, JSON.stringify(PRICING));
+    log('Pricing reset to defaults');
   }
 
   // ───────────────────────── DISCOVERY ─────────────────────────
@@ -848,6 +939,12 @@
 
     const resText = await xhrPost('https://api.openai.com/v1/responses', body, apiHeaders(KEY));
     const payload = JSON.parse(resText);
+
+    // Track token usage for headlines
+    if (payload.usage) {
+      updateApiTokens('headlines', payload.usage);
+    }
+
     const outStr = extractOutputText(payload);
     if (!outStr) throw Object.assign(new Error('No output_text/content from API'), {status:400});
     const cleaned = outStr.replace(/^```json\s*|\s*```$/g, '');
@@ -971,6 +1068,12 @@
 
     const resText = await xhrPost('https://api.openai.com/v1/responses', body, apiHeaders(KEY));
     const payload = JSON.parse(resText);
+
+    // Track token usage for body simplification
+    if (payload.usage) {
+      updateApiTokens('body', payload.usage);
+    }
+
     const outStr = extractOutputText(payload);
     if (!outStr) throw Object.assign(new Error('No output_text/content from API'), {status:400});
     const cleaned = outStr.replace(/^```json\s*|\s*```$/g, '');
@@ -1024,22 +1127,47 @@
         return;
       }
 
-      // Not in cache - simplify via API in batches
-      const allSimplified = [];
+      // Not in cache - simplify via API in parallel batches
       const batchSize = 10;
-      for (let i = 0; i < paragraphs.length; i += batchSize) {
-        const batch = paragraphs.slice(i, i + batchSize);
-        const simplified = await simplifyBodyText(batch);
-        allSimplified.push(...simplified);
+      const maxConcurrent = 5;
+      const allSimplified = [];
 
-        batch.forEach((p, idx) => {
-          if (simplified[idx]) {
-            p.textContent = simplified[idx];
-            p.setAttribute('data-neutralizer-body-simplified', '1');
-          }
+      // Create all batches
+      const batches = [];
+      for (let i = 0; i < paragraphs.length; i += batchSize) {
+        batches.push({
+          paragraphs: paragraphs.slice(i, i + batchSize),
+          startIdx: i
+        });
+      }
+
+      log(`Processing ${batches.length} batches with max ${maxConcurrent} concurrent requests`);
+
+      // Process batches in chunks of maxConcurrent
+      for (let i = 0; i < batches.length; i += maxConcurrent) {
+        const chunk = batches.slice(i, i + maxConcurrent);
+        const chunkPromises = chunk.map(batch =>
+          simplifyBodyText(batch.paragraphs).then(simplified => ({
+            simplified,
+            batch
+          }))
+        );
+
+        // Wait for all batches in this chunk to complete
+        const results = await Promise.all(chunkPromises);
+
+        // Apply results to DOM in order
+        results.forEach(({ simplified, batch }) => {
+          allSimplified.push(...simplified);
+          batch.paragraphs.forEach((p, idx) => {
+            if (simplified[idx]) {
+              p.textContent = simplified[idx];
+              p.setAttribute('data-neutralizer-body-simplified', '1');
+            }
+          });
         });
 
-        log(`Simplified batch ${Math.floor(i / batchSize) + 1} (${batch.length} paragraphs)`);
+        log(`Completed chunk ${Math.floor(i / maxConcurrent) + 1}/${Math.ceil(batches.length / maxConcurrent)} (${chunk.length} batches)`);
       }
 
       // Store in cache
@@ -1457,6 +1585,103 @@
     shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
   }
 
+  function openPricingDialog() {
+    const host = document.createElement('div'); host.setAttribute(UI_ATTR, '');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const style = document.createElement('style');
+    style.textContent = `
+      .wrap{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.55);
+            display:flex;align-items:center;justify-content:center}
+      .modal{background:#fff;max-width:520px;width:92%;border-radius:10px;
+             box-shadow:0 10px 40px rgba(0,0,0,.35);padding:20px;box-sizing:border-box}
+      .modal h3{margin:0 0 16px;font:600 16px/1.2 system-ui,sans-serif}
+      .modal p{margin:0 0 12px;font:13px/1.5 system-ui,sans-serif;color:#666}
+      .modal .info{background:#f8f9fa;padding:12px;border-radius:6px;margin:12px 0;font-size:12px;color:#444}
+      .modal .info a{color:#1a73e8;text-decoration:none}
+      .modal .info a:hover{text-decoration:underline}
+      .form-group{margin:16px 0}
+      .form-group label{display:block;margin-bottom:6px;font:600 13px system-ui,sans-serif;color:#333}
+      .form-group input{width:100%;padding:10px;border:2px solid #d0d0d0;border-radius:6px;
+                        font:14px system-ui,sans-serif;box-sizing:border-box}
+      .form-group input:focus{outline:none;border-color:#1a73e8}
+      .form-group .hint{margin-top:4px;font-size:11px;color:#666}
+      .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+      .btn{padding:10px 16px;border-radius:6px;border:none;font:600 13px system-ui,sans-serif;
+           cursor:pointer;transition:all 0.15s ease}
+      .btn.primary{background:#1a73e8;color:#fff}
+      .btn.primary:hover{background:#1557b0}
+      .btn.secondary{background:#e8eaed;color:#1a1a1a}
+      .btn.secondary:hover{background:#dadce0}
+      .btn:disabled{opacity:0.5;cursor:not-allowed}
+    `;
+    const wrap = document.createElement('div'); wrap.className = 'wrap';
+
+    wrap.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="API Pricing Configuration">
+        <h3>API Pricing Configuration</h3>
+        <p>Update pricing if OpenAI changes their rates. Current model: ${PRICING.model}</p>
+        <div class="info">
+          Last updated: ${PRICING.lastUpdated}<br>
+          Source: <a href="${PRICING.source}" target="_blank">OpenAI Pricing Page</a>
+        </div>
+        <div class="form-group">
+          <label for="inputPrice">Input tokens (per 1M tokens)</label>
+          <input type="number" id="inputPrice" step="0.01" min="0" value="${PRICING.inputPer1M}">
+          <div class="hint">USD per 1 million input tokens</div>
+        </div>
+        <div class="form-group">
+          <label for="outputPrice">Output tokens (per 1M tokens)</label>
+          <input type="number" id="outputPrice" step="0.01" min="0" value="${PRICING.outputPer1M}">
+          <div class="hint">USD per 1 million output tokens</div>
+        </div>
+        <div class="actions">
+          <button class="btn secondary reset">Reset to Defaults</button>
+          <button class="btn secondary cancel">Cancel</button>
+          <button class="btn primary save">Save</button>
+        </div>
+      </div>`;
+
+    shadow.append(style, wrap);
+    document.body.appendChild(host);
+    const close = () => host.remove();
+
+    const inputEl = shadow.querySelector('#inputPrice');
+    const outputEl = shadow.querySelector('#outputPrice');
+    const btnSave = shadow.querySelector('.save');
+    const btnCancel = shadow.querySelector('.cancel');
+    const btnReset = shadow.querySelector('.reset');
+
+    btnSave.addEventListener('click', async () => {
+      const inputPrice = parseFloat(inputEl.value);
+      const outputPrice = parseFloat(outputEl.value);
+
+      if (isNaN(inputPrice) || inputPrice < 0 || isNaN(outputPrice) || outputPrice < 0) {
+        alert('Please enter valid positive numbers');
+        return;
+      }
+
+      await updatePricing({
+        inputPer1M: inputPrice,
+        outputPer1M: outputPrice
+      });
+
+      openInfo(`Pricing updated!\nInput: $${inputPrice}/1M tokens\nOutput: $${outputPrice}/1M tokens`);
+      close();
+    });
+
+    btnReset.addEventListener('click', async () => {
+      if (confirm('Reset pricing to gpt-4o-mini defaults ($0.15 input, $0.60 output per 1M tokens)?')) {
+        await resetPricingToDefaults();
+        openInfo('Pricing reset to defaults (gpt-4o-mini: $0.15 input, $0.60 output per 1M tokens)');
+        close();
+      }
+    });
+
+    btnCancel.addEventListener('click', close);
+    wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+    shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+  }
+
   // ───────────────────────── MENUS ─────────────────────────
   // Configuration
   GM_registerMenuCommand?.('--- Configuration ---', () => {});
@@ -1476,6 +1701,7 @@
       }
     });
   });
+  GM_registerMenuCommand?.('Configure API pricing', openPricingDialog);
 
   // Global settings
   GM_registerMenuCommand?.('Edit GLOBAL target selectors', () => {
@@ -1620,6 +1846,7 @@
   GM_registerMenuCommand?.('Flush headline cache & rerun', async () => { await cacheClear(); resetAndReindex(); processVisibleNow(); });
   GM_registerMenuCommand?.('Flush body simplification cache', async () => { await bodyCacheClear(); location.reload(); });
   GM_registerMenuCommand?.('Reset stats counters', () => { STATS.total = STATS.live = STATS.cache = STATS.batches = 0; CHANGES.length = 0; updateBadgeCounts(); });
+  GM_registerMenuCommand?.('Reset API usage stats', async () => { await resetApiTokens(); openInfo('API usage stats reset. Token counters and cost tracking cleared.'); });
 
   // ───────────────────────── BADGE (Calmed / Restore) + Per-site toggle ─────────────────────────
   let badge, badgeState = 'calmed'; // 'calmed' or 'originals'
@@ -1743,6 +1970,13 @@
     const bodyCacheSize = Object.keys(BODY_CACHE).length;
     const bodyCacheArticles = Object.values(BODY_CACHE).map(c => `${c.url} (${c.count}p)`).join('<br>');
 
+    // Calculate API usage stats
+    const totalInput = API_TOKENS.headlines.input + API_TOKENS.body.input;
+    const totalOutput = API_TOKENS.headlines.output + API_TOKENS.body.output;
+    const totalTokens = totalInput + totalOutput;
+    const totalCalls = API_TOKENS.headlines.calls + API_TOKENS.body.calls;
+    const estimatedCost = calculateApiCost();
+
     modal.innerHTML = `
       <h3>Stats & Changes (this page)</h3>
       <div style="background:#f5f5f5;padding:10px;border-radius:6px;margin-bottom:12px;font-size:13px;">
@@ -1750,6 +1984,24 @@
         Headlines cached: ${headlineCacheSize} entries<br>
         Body simplifications cached: ${bodyCacheSize} articles<br>
         ${bodyCacheSize > 0 ? `<details style="margin-top:6px"><summary style="cursor:pointer">Cached articles</summary><div style="font-size:11px;margin-top:4px;max-height:100px;overflow-y:auto">${bodyCacheArticles}</div></details>` : ''}
+      </div>
+      <div style="background:#e8f4fd;padding:10px;border-radius:6px;margin-bottom:12px;font-size:13px;border-left:3px solid #1a73e8;">
+        <strong>API Usage (since install):</strong><br>
+        Total API calls: ${totalCalls.toLocaleString()}<br>
+        Total tokens: ${totalTokens.toLocaleString()} (${totalInput.toLocaleString()} input, ${totalOutput.toLocaleString()} output)<br>
+        <details style="margin-top:6px">
+          <summary style="cursor:pointer">Breakdown by feature</summary>
+          <div style="font-size:12px;margin-top:4px">
+            <strong>Headlines:</strong> ${API_TOKENS.headlines.calls.toLocaleString()} calls, ${(API_TOKENS.headlines.input + API_TOKENS.headlines.output).toLocaleString()} tokens<br>
+            <strong>Body simplification:</strong> ${API_TOKENS.body.calls.toLocaleString()} calls, ${(API_TOKENS.body.input + API_TOKENS.body.output).toLocaleString()} tokens
+          </div>
+        </details>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #ccc;color:#1557b0;font-weight:600">
+          Estimated cost: ~$${estimatedCost.toFixed(4)}
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:#666">
+          Pricing: $${PRICING.inputPer1M} input / $${PRICING.outputPer1M} output per 1M tokens (${PRICING.model}, updated ${PRICING.lastUpdated})
+        </div>
       </div>
       <h4 style="margin:0 0 8px">Headlines Changed</h4>
     `;

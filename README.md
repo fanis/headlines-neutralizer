@@ -1,6 +1,6 @@
 # Neutralize Headlines Userscript - Setup & Usage Guide
 
-> **Latest Version**: 1.5.1 | [See What's New](CHANGELOG.md)
+> **Latest Version**: 1.6.0 | [See What's New](CHANGELOG.md)
 
 ## Table of Contents
 - [What It Does](#what-it-does)
@@ -48,7 +48,7 @@
   **New in 1.5.0:** On article pages, it can also simplify body text by removing convoluted phrasing and jargon
   while preserving all facts, quotes, and meaning.
 
-  **New in 1.5.1:** Improved first-run experience with a welcome dialog that guides you through setup.
+  **New in 1.6.0:** API usage tracking and cost monitoring with real token counts, plus 3-5x faster body simplification.
 
 ##  Features:
   - Automatic headline detection using smart heuristics
@@ -62,7 +62,8 @@
   - Intelligent caching to minimize API calls (separate caches for headlines and body text)
   - On-page badge to restore/reapply changes (with body simplification toggle on article pages)
   - Visual flash animation when headlines are neutralized
-  - Stats dialog shows cache usage and all changes
+  - **API usage tracking and cost monitoring** with real token counts and configurable pricing
+  - Stats dialog shows API usage, cache statistics, and all changes
 
   ---
 ##  Prerequisites
@@ -154,6 +155,11 @@
 ###  Configuration
 
   - **Set / Validate OpenAI API key** - Add or test your API key
+  - **Configure API pricing** - Set or update pricing for cost calculations
+    - Update input/output token costs when OpenAI changes pricing
+    - Shows current model, pricing, last updated date, and source link
+    - Reset to defaults button (gpt-4o-mini: $0.15/$0.60 per 1M tokens)
+    - Cost calculations in stats dialog use these values
 
   **Global Settings** (apply to all domains):
   - **Edit GLOBAL target selectors** - Base CSS selectors for all websites
@@ -209,6 +215,11 @@
 ###  Actions
 
   - **Show stats & changes (diff audit)** - View cache statistics and all changes
+    - **API Usage & Cost** - Real-time tracking with actual token counts from OpenAI
+      - Total input/output tokens and costs since installation
+      - Breakdown by feature (headlines vs body simplification)
+      - Based on current pricing configuration (see "Configure API pricing")
+      - API stats persist and are independent from clearable page stats
     - Displays headline cache size and body cache size
     - Shows list of cached articles with paragraph counts
     - Shows all original → neutralized headline changes on current page
@@ -352,6 +363,8 @@
 
 ###  Data Storage:
   - API key: Stored locally (GM storage → localStorage → memory fallback)
+  - API usage stats: Stored locally, persists across sessions (input/output tokens, call counts)
+  - API pricing configuration: Stored locally, user-configurable
   - Global settings: Stored locally in your browser
   - Domain-specific settings: Stored locally per-domain
   - Headline cache: Stored locally, per-domain, up to 1500 entries
@@ -406,7 +419,7 @@ topKPerCard: 1,      // Increase to 2-3 for multiple headlines per card
 
   - Issues: Report bugs or request features on the project's repository
   - Console Logs: Enable DEBUG mode for detailed troubleshooting info
-  - Stats Dialog: Use "Show stats & changes" to view cache usage and verify changes
+  - Stats Dialog: Use "Show stats & changes" to monitor API usage, costs, cache statistics, and verify changes
 
   ---
 ##  Tips for Best Results
@@ -414,12 +427,13 @@ topKPerCard: 1,      // Increase to 2-3 for multiple headlines per card
   1. Start with auto-detect ON - Let the script learn the site structure
   2. Set up global selectors first - Use settings that work on most sites
   3. Add domain-specific selectors sparingly - Only for sites that need special handling
-  4. Check the stats dialog - Verify neutralizations are accurate and monitor cache usage
+  4. Check the stats dialog - Monitor API usage and costs, verify neutralizations, and track cache efficiency
   5. Use allowlist mode for sensitive sites - Avoid false positives
   6. Keep cache enabled - Dramatically reduces API costs on revisits
-  7. Try body simplification on article pages - Makes complex articles easier to read
-  8. Adjust simplification strength - Find the right balance between clarity and originality
-  9. Toggle badge OFF for clean UI - Access controls via menu instead
+  7. Configure pricing - Update API pricing in settings when OpenAI changes rates for accurate cost tracking
+  8. Try body simplification on article pages - Makes complex articles easier to read
+  9. Adjust simplification strength - Find the right balance between clarity and originality
+  10. Toggle badge OFF for clean UI - Access controls via menu instead
 
   ---
 

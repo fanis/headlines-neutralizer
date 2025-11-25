@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.6.0] - 2025-11-25
+
+### Added
+- **API token tracking and cost monitoring**
+  - Real-time tracking of input/output tokens from OpenAI API responses
+  - Accurate cost calculation based on actual usage
+  - Separate tracking for headlines vs body simplification
+  - Persistent storage (survives browser restarts)
+  - Independent from clearable page stats
+  - Display in enhanced stats dialog with breakdown by feature
+- **User-configurable API pricing**
+  - New "Configure API pricing" menu option
+  - Dialog to update pricing when OpenAI changes rates
+  - Shows current model, pricing, last updated date, and source
+  - Reset to defaults button (gpt-4o-mini: $0.15/$0.60 per 1M tokens)
+  - Pricing information displayed in stats dialog
+- **Parallel batch processing for body simplification**
+  - Processes up to 5 batches concurrently instead of sequentially
+  - 3-5x speed improvement for body simplification
+  - Configurable max concurrent requests
+  - Better progress logging
+
+### Changed
+- Stats dialog renamed to "Show stats & changes (diff audit)"
+- Enhanced stats dialog now shows API usage prominently
+- Token tracking uses correct OpenAI API field names (input_tokens/output_tokens)
+
+### Improved
+- Body simplification is now significantly faster
+- Better logging for token usage tracking with DEBUG mode
+
+
 ## [1.5.1] - 2025-11-25
 
 ### Fixed
