@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.5.1] - 2025-11-25
+
+### Fixed
+- Issue where API key dialog would appear 4-5 times on first install
+- Script attempting to process pages without API key configured
+
+### Added
+- Welcome dialog on first install to guide users through setup
+  - Provides step-by-step instructions with link to OpenAI API keys page
+  - Explains domain control defaults (all sites disabled initially)
+  - Option to "Set Up API Key" or "Maybe Later"
+- First-install detection system
+
+### Changed
+- Default domain mode for new installs is now allowlist (disabled everywhere)
+- Script remains inactive until API key is configured
+- Prevents multiple API key dialogs from appearing on the same page
+
+
 ## [1.5.0] - 2025-11-25
 
 ### Added

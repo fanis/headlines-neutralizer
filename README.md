@@ -1,6 +1,6 @@
 # Neutralize Headlines Userscript - Setup & Usage Guide
 
-> **Latest Version**: 1.5.0 | [See What's New](CHANGELOG.md)
+> **Latest Version**: 1.5.1 | [See What's New](CHANGELOG.md)
 
 ## Table of Contents
 - [What It Does](#what-it-does)
@@ -48,6 +48,8 @@
   **New in 1.5.0:** On article pages, it can also simplify body text by removing convoluted phrasing and jargon
   while preserving all facts, quotes, and meaning.
 
+  **New in 1.5.1:** Improved first-run experience with a welcome dialog that guides you through setup.
+
 ##  Features:
   - Automatic headline detection using smart heuristics
   - Adjustable neutralization strength (5 levels from Minimal to Maximum)
@@ -83,12 +85,16 @@
   - Your userscript manager should detect it and prompt you to install
   - Click "Install"
 
-2. Configure your API key:
-  - After installation, visit any website
-  - Click your userscript manager icon → "Neutralize Headlines" menu
-  - Select "Set / Validate OpenAI API key"
-  - Paste your API key and click "Validate" to test it
-  - Click "Save"
+2. First-time setup:
+  - When you first visit a website after installation, a welcome dialog will appear
+  - Click "Set Up API Key" to begin configuration
+  - Follow the guided steps to get your OpenAI API key:
+    1. Visit OpenAI's API keys page (link provided in dialog)
+    2. Sign in or create an account
+    3. Create a new secret key
+    4. Copy and paste it in the next dialog
+  - Click "Validate" to test your key, then "Save"
+  - The script will automatically enable itself on all websites
 
 3. You're done! The script will now run automatically on websites.
 
@@ -348,11 +354,13 @@
   - API key: Stored locally (GM storage → localStorage → memory fallback)
   - Global settings: Stored locally in your browser
   - Domain-specific settings: Stored locally per-domain
-  - Cache: Stored locally, per-domain, up to 1500 entries
+  - Headline cache: Stored locally, per-domain, up to 1500 entries
+  - Body simplification cache: Stored locally, up to 30 articles (~240-300KB)
   - Nothing is sent to external servers except OpenAI API calls
 
 ###  What's Sent to OpenAI:
-  - Only the headline text for neutralization
+  - Headline text for neutralization
+  - Article body paragraphs for simplification (when enabled)
   - No personal data, cookies, or browsing history
 
   ---
@@ -398,7 +406,7 @@ topKPerCard: 1,      // Increase to 2-3 for multiple headlines per card
 
   - Issues: Report bugs or request features on the project's repository
   - Console Logs: Enable DEBUG mode for detailed troubleshooting info
-  - Diff Audit: Use "Show what changed" to verify the script is working correctly
+  - Stats Dialog: Use "Show stats & changes" to view cache usage and verify changes
 
   ---
 ##  Tips for Best Results
@@ -406,10 +414,12 @@ topKPerCard: 1,      // Increase to 2-3 for multiple headlines per card
   1. Start with auto-detect ON - Let the script learn the site structure
   2. Set up global selectors first - Use settings that work on most sites
   3. Add domain-specific selectors sparingly - Only for sites that need special handling
-  4. Check the diff audit - Verify neutralizations are accurate
+  4. Check the stats dialog - Verify neutralizations are accurate and monitor cache usage
   5. Use allowlist mode for sensitive sites - Avoid false positives
   6. Keep cache enabled - Dramatically reduces API costs on revisits
-  7. Toggle badge OFF for clean UI - Access controls via menu instead
+  7. Try body simplification on article pages - Makes complex articles easier to read
+  8. Adjust simplification strength - Find the right balance between clarity and originality
+  9. Toggle badge OFF for clean UI - Access controls via menu instead
 
   ---
 

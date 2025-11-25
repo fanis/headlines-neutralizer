@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      1.5.0
+// @version      1.5.1
 // @description  Tone down sensationalist titles and simplify article body text via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -73,6 +73,9 @@
   const LOG_PREFIX = '[neutralizer-ai]';
   function log(...args) { if (!CFG.DEBUG) return; console.log(LOG_PREFIX, ...args); }
 
+  // Prevent multiple API key dialogs from showing
+  let apiKeyDialogShown = false;
+
   // ───────────────────────── STORAGE (GM → LS → memory) ─────────────────────────
   const MEM = new Map();
   const LS_KEY_NS = '__neutralizer__';
@@ -132,6 +135,7 @@
   const TEMPERATURE_KEY     = 'neutralizer_temperature_v1';
   const SIMPLIFY_BODY_KEY   = 'neutralizer_simplifybody_v1';
   const SIMPLIFICATION_STRENGTH_KEY = 'neutralizer_simplification_v1';
+  const FIRST_INSTALL_KEY   = 'neutralizer_installed_v1';
 
   // Temperature levels mapping
   const TEMPERATURE_LEVELS = {
@@ -1220,6 +1224,12 @@
   }
 
   function openKeyDialog(extra) {
+    if (apiKeyDialogShown) {
+      log('API key dialog already shown, not showing again');
+      return;
+    }
+    apiKeyDialogShown = true;
+
     openEditor({
       title: 'OpenAI API key',
       mode: 'secret',
@@ -1229,6 +1239,7 @@
         const ok = await storage.set('OPENAI_KEY', val);
         const verify = await storage.get('OPENAI_KEY', '');
         log('API key saved:', ok, verify ? `••••${verify.slice(-4)}` : '(empty)');
+        apiKeyDialogShown = false; // Reset so it can be shown again if needed
       },
       onValidate: async (val) => {
         const key = val || await storage.get('OPENAI_KEY', '');
@@ -1237,6 +1248,97 @@
         catch (e) { log('key validation error:', e.message || e); openInfo(`Validation failed: ${e.message || e}`); }
       }
     });
+  }
+
+  function openWelcomeDialog() {
+    const host = document.createElement('div'); host.setAttribute(UI_ATTR, '');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const style = document.createElement('style');
+    style.textContent = `
+      .wrap{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.55);
+            display:flex;align-items:center;justify-content:center}
+      .modal{background:#fff;max-width:580px;width:94%;border-radius:12px;
+             box-shadow:0 10px 40px rgba(0,0,0,.4);padding:24px;box-sizing:border-box}
+      .modal h2{margin:0 0 16px;font:700 20px/1.3 system-ui,sans-serif;color:#1a1a1a}
+      .modal p{margin:0 0 12px;font:14px/1.6 system-ui,sans-serif;color:#444}
+      .modal .steps{background:#f8f9fa;padding:16px;border-radius:8px;margin:16px 0;
+                     font:13px/1.5 system-ui,sans-serif}
+      .modal .steps ol{margin:8px 0 0;padding-left:20px}
+      .modal .steps li{margin:6px 0}
+      .modal .steps a{color:#1a73e8;text-decoration:none}
+      .modal .steps a:hover{text-decoration:underline}
+      .actions{display:flex;gap:12px;justify-content:flex-end;margin-top:20px}
+      .btn{padding:10px 20px;border-radius:8px;border:none;font:600 14px system-ui,sans-serif;
+           cursor:pointer;transition:all 0.15s ease}
+      .btn.primary{background:#1a73e8;color:#fff}
+      .btn.primary:hover{background:#1557b0}
+      .btn.secondary{background:#e8eaed;color:#1a1a1a}
+      .btn.secondary:hover{background:#dadce0}
+    `;
+    const wrap = document.createElement('div'); wrap.className = 'wrap';
+
+    wrap.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Welcome">
+        <h2>Welcome to Neutralize Headlines!</h2>
+        <p>This userscript helps you browse the web with calmer, more informative headlines by neutralizing sensationalist language.</p>
+        <p>To get started, you'll need an OpenAI API key:</p>
+        <div class="steps">
+          <ol>
+            <li>Visit <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI API Keys</a></li>
+            <li>Sign in or create an account</li>
+            <li>Click "Create new secret key"</li>
+            <li>Copy the key and paste it in the next dialog</li>
+          </ol>
+        </div>
+        <p style="font-size:13px;color:#666;margin-top:16px"><strong>Domain control:</strong> By default, all websites are disabled. After setup, you can enable websites one by one via the menu, or toggle to "All domains with Denylist" mode to enable everywhere.</p>
+        <p style="font-size:13px;color:#666">The script uses gpt-4o-mini (cost-effective). Your key is stored locally and never shared.</p>
+        <div class="actions">
+          <button class="btn secondary cancel">Maybe Later</button>
+          <button class="btn primary continue">Set Up API Key</button>
+        </div>
+      </div>`;
+
+    shadow.append(style, wrap);
+    document.body.appendChild(host);
+
+    const btnContinue = shadow.querySelector('.continue');
+    const btnCancel = shadow.querySelector('.cancel');
+
+    btnContinue.addEventListener('click', async () => {
+      host.remove();
+      // Open the API key editor
+      openEditor({
+        title: 'OpenAI API key',
+        mode: 'secret',
+        initial: '',
+        hint: 'Paste your API key here. Click Validate to test it, then Save.',
+        onSave: async (val) => {
+          await storage.set('OPENAI_KEY', val);
+          // Switch to deny mode (enable everywhere) now that we have a key
+          await storage.set(DOMAINS_MODE_KEY, 'deny');
+          await storage.set(FIRST_INSTALL_KEY, 'true');
+          openInfo('API key saved! The script will now work on all websites. Reload any page to see it in action.');
+        },
+        onValidate: async (val) => {
+          const key = val || await storage.get('OPENAI_KEY', '');
+          if (!key) { openInfo('Please enter your API key first'); return; }
+          try {
+            await xhrGet('https://api.openai.com/v1/models', { Authorization: `Bearer ${key}` });
+            openInfo('Validation OK! Click Save to continue.');
+          }
+          catch (e) { openInfo(`Validation failed: ${e.message || e}`); }
+        }
+      });
+    });
+
+    btnCancel.addEventListener('click', async () => {
+      host.remove();
+      await storage.set(FIRST_INSTALL_KEY, 'true');
+      openInfo('You can set up your API key anytime via the userscript menu:\n"Set / Validate OpenAI API key"');
+    });
+
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) btnCancel.click(); });
+    shadow.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); btnCancel.click(); } });
   }
 
   function openTemperatureDialog() {
@@ -1678,6 +1780,33 @@
   function escapeHtml(s){return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));}
 
   // ───────────────────────── BOOTSTRAP ─────────────────────────
+
+  // Check if this is first install
+  const isFirstInstall = await storage.get(FIRST_INSTALL_KEY, '') === '';
+  const hasApiKey = (await storage.get('OPENAI_KEY', '')) !== '';
+
+  if (isFirstInstall) {
+    log('First install detected');
+    // Set domain mode to allowlist (disabled everywhere) by default
+    if (DOMAINS_MODE === 'deny') {
+      await storage.set(DOMAINS_MODE_KEY, 'allow');
+      DOMAINS_MODE = 'allow';
+      log('Set domain mode to allowlist (disabled by default)');
+    }
+
+    // Show welcome dialog after a brief delay to let page settle
+    setTimeout(() => {
+      openWelcomeDialog();
+    }, 500);
+    return;
+  }
+
+  // If no API key, don't run the script
+  if (!hasApiKey) {
+    log('No API key configured. Script inactive. Set API key via menu.');
+    return;
+  }
+
   if (DOMAIN_DISABLED || OPTED_OUT) {
     log('inactive:', OPTED_OUT ? 'publisher opt-out' : 'domain disabled');
     return;
