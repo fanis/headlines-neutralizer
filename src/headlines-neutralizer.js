@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      1.6.0
+// @version      1.6.1
 // @description  Tone down sensationalist titles and simplify article body text via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -446,22 +446,27 @@
              box-shadow: 0 0 0 2px rgba(0,0,0,.03), 0 0 12px rgba(0,0,0,.12); }
         100% { background-color: transparent; box-shadow: none; }
       }
-      .neutralizer-badge { position: fixed; right: 12px; bottom: 14px; z-index: 2147483646;
-        font: 12px/1.1 system-ui, sans-serif; color: #0b3d2c; background: #c9f6e1; border: 1px solid #79d4b0;
-        padding: 8px 10px; border-radius: 10px; box-shadow: 0 6px 22px rgba(0,0,0,.18); display:flex; flex-direction:column; gap:6px; }
-      .neutralizer-badge .row { display:flex; gap:8px; align-items:center; }
-      .neutralizer-badge .btn { cursor: pointer; padding: 4px 8px; border-radius: 8px; border:1px solid #79d4b0; background:#fff; }
-      .neutralizer-badge .btn.primary { background:#0b3d2c; color:#fff; border-color:#0b3d2c; }
-      .neutralizer-badge .small { font-size:11px; opacity:.9; }
-      .neutralizer-badge .provenance { font-size:10px; opacity:.7; text-align:center; }
-      .neutralizer-audit { position:fixed; inset:0; z-index:2147483646; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.45); }
-      .neutralizer-audit .modal { background:#fff; max-width:900px; width:94%; border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,.4); padding:14px; }
-      .neutralizer-audit h3 { margin:0 0 8px; font:600 16px/1.2 system-ui,sans-serif; }
-      .neutralizer-audit .list { max-height:70vh; overflow:auto; }
-      .neutralizer-audit .row { border-top:1px solid #eee; padding:8px 2px; }
-      .neutralizer-audit .from { color:#666; }
-      .neutralizer-audit .to { color:#111; font-weight:600; }
-      .neutralizer-audit .meta { color:#888; font-size:11px; }
+      .neutralizer-badge { position: fixed !important; right: 12px; bottom: 14px; z-index: 2147483646;
+        font: 12px/1.4 system-ui, sans-serif !important; color: #0b3d2c !important; background: #c9f6e1 !important;
+        border: 1px solid #79d4b0 !important; padding: 8px 10px !important; border-radius: 10px !important;
+        box-shadow: 0 6px 22px rgba(0,0,0,.18) !important;
+        display: flex !important; flex-direction: column !important; gap: 6px !important;
+        box-sizing: border-box !important; width: auto !important; max-width: 200px;
+        margin: 0 !important; }
+      .neutralizer-badge * { box-sizing: border-box !important; }
+      .neutralizer-badge .row { display: flex !important; gap: 8px !important; align-items: center !important;
+        justify-content: center !important; margin: 0 !important; padding: 0 !important; width: 100%; }
+      .neutralizer-badge .btn { cursor: pointer !important; padding: 6px 10px !important; border-radius: 8px !important;
+        border: 1px solid #79d4b0 !important; background: #fff !important; box-sizing: border-box !important;
+        white-space: nowrap !important; font-family: system-ui, sans-serif !important;
+        font-size: 12px !important; line-height: 1.2 !important; color: #0b3d2c !important;
+        margin: 0 !important; min-width: 0 !important; width: auto !important; }
+      .neutralizer-badge .btn.primary { background: #0b3d2c !important; color: #fff !important;
+        border-color: #0b3d2c !important; }
+      .neutralizer-badge .btn:disabled { opacity: 0.6 !important; cursor: not-allowed !important; }
+      .neutralizer-badge .small { font-size: 11px !important; opacity: .9 !important; }
+      .neutralizer-badge .provenance { font-size: 10px !important; opacity: .7 !important;
+        text-align: center !important; margin: 0 !important; padding: 0 !important; }
     `;
     document.head.appendChild(style);
   }
@@ -966,33 +971,68 @@
   let bodySimplified = false;
 
   function isArticlePage() {
-    // Heuristic: check for article-like structures
-    const articleSelectors = [
-      'article[role="article"]',
-      'article[itemtype*="Article"]',
-      '[role="main"] article',
-      'main article',
+    // Check for strong article indicators first (high confidence)
+    const strongArticleSelectors = [
+      '[itemprop="articleBody"]',
       '.article-body',
       '.post-content',
       '.entry-content',
       '[class*="article-content"]',
-      '[class*="post-body"]',
-      '[itemprop="articleBody"]'
+      '[class*="post-body"]'
     ];
 
-    for (const selector of articleSelectors) {
+    for (const selector of strongArticleSelectors) {
       if (document.querySelector(selector)) return true;
     }
 
-    // Additional heuristic: check if there's a long-form content area
+    // Exclude homepage/listing pages
+    const path = location.pathname;
+    const isHomepage = path === '/' || path === '' || path === '/index.html' || path === '/index.php';
+
+    if (isHomepage) {
+      return false;
+    }
+
+    // Check for listing-specific classes
+    const listingIndicators = [
+      '.post-list', '.article-list', '.news-list',
+      '.category-list', '.archive-list'
+    ];
+    for (const selector of listingIndicators) {
+      if (document.querySelector(selector)) return false;
+    }
+
+    // Check for article element with semantic markup
+    const articles = document.querySelectorAll('article');
+    if (articles.length === 1) {
+      const article = articles[0];
+      if (article.getAttribute('role') === 'article' ||
+          article.getAttribute('itemtype')?.includes('Article')) {
+        return true;
+      }
+    }
+
+    // URL pattern suggests article (has numbers suggesting specific content)
+    const hasArticleUrlPattern = /\/\d{4,}\/|\/\d{4}-\d{2}-\d{2}\//.test(path);
+
+    // Check for long-form content
     const mainContent = document.querySelector('article, main, [role="main"]');
     if (mainContent) {
       const paragraphs = mainContent.querySelectorAll('p');
-      // If there are 5+ paragraphs with substantial text, likely an article
       let substantialParagraphs = 0;
       for (const p of paragraphs) {
         if (p.textContent.trim().length > 100) substantialParagraphs++;
-        if (substantialParagraphs >= 5) return true;
+        if (substantialParagraphs >= 4) return true;
+      }
+    }
+
+    // If URL pattern suggests article, require more evidence
+    if (hasArticleUrlPattern) {
+      const allParagraphs = document.querySelectorAll('article p, main p, [role="main"] p');
+      let totalLength = 0;
+      for (const p of allParagraphs) {
+        totalLength += p.textContent.trim().length;
+        if (totalLength > 800) return true;
       }
     }
 
@@ -1123,6 +1163,7 @@
           }
         });
         bodySimplified = true;
+        syncBodyBadgeState();
         log('Body simplification complete (from cache)');
         return;
       }
@@ -1143,9 +1184,22 @@
 
       log(`Processing ${batches.length} batches with max ${maxConcurrent} concurrent requests`);
 
+      // Update badge to show progress
+      const updateProgressBadge = (current, total) => {
+        const btn = badge?.querySelector('.body-action');
+        if (btn) {
+          btn.textContent = `B: simplifying ${current}/${total}...`;
+        }
+      };
+
       // Process batches in chunks of maxConcurrent
       for (let i = 0; i < batches.length; i += maxConcurrent) {
         const chunk = batches.slice(i, i + maxConcurrent);
+        const currentChunk = Math.floor(i / maxConcurrent) + 1;
+        const totalChunks = Math.ceil(batches.length / maxConcurrent);
+
+        updateProgressBadge(currentChunk, totalChunks);
+
         const chunkPromises = chunk.map(batch =>
           simplifyBodyText(batch.paragraphs).then(simplified => ({
             simplified,
@@ -1167,17 +1221,19 @@
           });
         });
 
-        log(`Completed chunk ${Math.floor(i / maxConcurrent) + 1}/${Math.ceil(batches.length / maxConcurrent)} (${chunk.length} batches)`);
+        log(`Completed chunk ${currentChunk}/${totalChunks} (${chunk.length} batches)`);
       }
 
       // Store in cache
       bodyCacheSet(url, paragraphTexts, allSimplified);
 
       bodySimplified = true;
+      syncBodyBadgeState();
       log('Body simplification complete (via API, cached)');
     } catch (err) {
       log('Body simplification error:', err);
       friendlyApiError(err);
+      syncBodyBadgeState(); // Reset badge state on error
     }
   }
 
@@ -1215,6 +1271,7 @@
         }
       });
       bodySimplified = true;
+      syncBodyBadgeState();
     } else {
       // Not in cache, need to re-simplify
       log('Cache miss, re-simplifying body text');
@@ -1853,12 +1910,17 @@
   let bodyBadgeState = 'original'; // 'original' or 'simplified'
 
   function ensureBadge() {
-    if (badge || (DOMAIN_DISABLED || OPTED_OUT) || !SHOW_BADGE) return;
+    if ((DOMAIN_DISABLED || OPTED_OUT) || !SHOW_BADGE) return;
+
+    // Check if badge exists and is still in the DOM
+    if (badge && badge.isConnected) return;
+
+    // Badge was removed or doesn't exist, recreate it
     badge = document.createElement('div');
     badge.className = 'neutralizer-badge';
     badge.setAttribute(UI_ATTR,'');
 
-    const isArticle = isArticlePage();
+    const isArticle = SIMPLIFY_BODY && isArticlePage();
     const bodyRow = isArticle ? `
       <div class="row">
         <button class="btn body-action">B: original</button>
@@ -1868,10 +1930,9 @@
     badge.innerHTML = `
       <div class="row">
         <button class="btn primary action">H: neutral</button>
-        <span class="small counts">(0)</span>
       </div>
       ${bodyRow}
-      <div class="provenance">Neutralize Headlines userscript</div>
+      <div class="provenance">Neutralize Headlines</div>
     `;
     document.body.appendChild(badge);
     badge.querySelector('.action').addEventListener('click', onBadgeAction);
@@ -1895,11 +1956,10 @@
     const btn = badge.querySelector('.body-action');
     if (bodyBadgeState === 'original') {
       // Simplify body
-      btn.textContent = 'B: simplifying...';
+      btn.textContent = 'B: starting...';
       btn.disabled = true;
       applyBodySimplification(true).then(() => {
-        bodyBadgeState = 'simplified';
-        btn.textContent = 'B: simplified';
+        // Badge state is synced inside applyBodySimplification
         btn.disabled = false;
       }).catch(err => {
         log('Body simplification error:', err);
@@ -1909,15 +1969,28 @@
     } else {
       // Restore original
       restoreBodyOriginals();
+      syncBodyBadgeState();
+    }
+  }
+
+  function updateBadgeCounts() {
+    // Counts display removed from badge
+  }
+
+  function syncBodyBadgeState() {
+    if (!badge) return;
+    const btn = badge.querySelector('.body-action');
+    if (!btn) return;
+
+    if (bodySimplified) {
+      bodyBadgeState = 'simplified';
+      btn.textContent = 'B: simplified';
+    } else {
       bodyBadgeState = 'original';
       btn.textContent = 'B: original';
     }
   }
 
-  function updateBadgeCounts() {
-    const el = badge?.querySelector('.counts');
-    if (el) el.textContent = `(${STATS.total})`;
-  }
   function restoreOriginals() {
     const els = document.querySelectorAll('[data-neutralizer-changed="1"][data-neutralizer-original]');
     let n = 0;
@@ -1961,7 +2034,27 @@
 
   // ───────────────────────── DIFF AUDIT ─────────────────────────
   function showDiffAudit() {
-    const host = document.createElement('div'); host.className = 'neutralizer-audit'; host.setAttribute(UI_ATTR,'');
+    const host = document.createElement('div'); host.setAttribute(UI_ATTR,'');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const style = document.createElement('style');
+    style.textContent = `
+      .wrap { position:fixed; inset:0; z-index:2147483647; background:rgba(0,0,0,.45);
+              display:flex; align-items:center; justify-content:center; }
+      .modal { background:#fff; max-width:900px; width:94%; border-radius:10px;
+               box-shadow:0 10px 40px rgba(0,0,0,.4); padding:14px; box-sizing:border-box; }
+      h3, h4 { margin:0 0 8px; font:600 16px/1.2 system-ui,sans-serif; }
+      h4 { font-size:14px; }
+      .list { max-height:70vh; overflow:auto; }
+      .row { border-top:1px solid #eee; padding:8px 2px; }
+      .from { color:#666; }
+      .to { color:#111; font-weight:600; }
+      .meta { color:#888; font-size:11px; }
+      .btn { padding:10px 16px; border-radius:6px; border:none;
+             font:600 13px system-ui,sans-serif; cursor:pointer;
+             background:#e8eaed; color:#1a1a1a; }
+      .btn:hover { background:#dadce0; }
+    `;
+    const wrap = document.createElement('div'); wrap.className = 'wrap';
     const modal = document.createElement('div'); modal.className = 'modal';
     const list = document.createElement('div'); list.className = 'list';
 
@@ -2024,10 +2117,16 @@
     const btnClose = document.createElement('button'); btnClose.textContent = 'Close'; btnClose.className = 'btn';
     actions.appendChild(btnClose);
     modal.appendChild(actions);
-    host.appendChild(modal);
+    wrap.appendChild(modal);
+    shadow.append(style, wrap);
     document.body.appendChild(host);
-    host.addEventListener('click', (e) => { if (e.target === host) host.remove(); });
-    btnClose.addEventListener('click', () => host.remove());
+    const close = () => host.remove();
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+    btnClose.addEventListener('click', () => close());
+    shadow.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    // Focus the wrapper to enable keyboard events
+    wrap.setAttribute('tabindex', '-1');
+    wrap.focus();
   }
   function escapeHtml(s){return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));}
 
@@ -2069,18 +2168,14 @@
   ensureObserver();
 
   const mo = new MutationObserver((muts) => {
+    ensureBadge(); // Recreate badge if it was removed
     for (const m of muts) { if (m.addedNodes && m.addedNodes.length) m.addedNodes.forEach(n => { if (n.nodeType === 1) attachTargets(n); }); }
   });
   mo.observe(document.body, { childList: true, subtree: true });
 
   processVisibleNow();
 
-  // Apply body simplification if enabled
-  if (SIMPLIFY_BODY && isArticlePage()) {
-    // Delay slightly to let the page settle
-    setTimeout(() => {
-      applyBodySimplification();
-    }, 1000);
-  }
+  // Body simplification is now only triggered manually via badge button click
+  // (removed automatic application on page load)
 
 })();

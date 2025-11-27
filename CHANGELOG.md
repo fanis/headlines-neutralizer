@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.6.1] - 2025-11-27
+
+### Fixed
+- Badge layout overflow issues on sites with conflicting CSS
+- Badge disappearing on sites with aggressive DOM manipulation 
+- Body simplification button appearing on all pages regardless of setting
+- Article detection incorrectly identifying homepages and listing pages as articles
+- Diff audit dialog not appearing on some sites due to CSS conflicts
+
+### Improved
+- Badge CSS now uses `!important` flags for better cross-site consistency
+- Badge automatically recreates itself if removed by page JavaScript
+- Article page detection with better homepage/listing page exclusion
+- Body simplification button only appears when feature is enabled
+- All dialogs now close with ESC key
+- Diff audit dialog now uses Shadow DOM for CSS isolation
+
+### Changed
+- Removed headline count display from badge to improve layout
+- Body simplification is now manual-only (no automatic application on page load)
+- Badge shows real-time progress during body simplification (e.g., "B: simplifying 2/5...")
+
+
 ## [1.6.0] - 2025-11-25
 
 ### Added
