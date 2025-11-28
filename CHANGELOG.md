@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.6.2] - 2025-11-28
+
+### Added
+- **Collapsible badge** with discrete handle
+  - Click the handle arrow to hide/show badge content
+  - Badge slides into scrollbar area when collapsed, leaving only handle visible
+  - State persists across all pages where the script is enabled
+  - Handle shows directional arrow: ▶ when expanded (click to collapse), ◀ when collapsed (click to expand)
+  - Minimalist handle design with no borders or background for discretion
+
+### Improved
+- **Streamlined domain controls menu**
+  - Consolidated from 3 menu items to 2
+  - Status display now acts as interactive toggle (shows "Current page: ENABLED/DISABLED (click to toggle)")
+  - Single menu item handles both allowlist and denylist modes dynamically
+
+
 ## [1.6.1] - 2025-11-27
 
 ### Fixed

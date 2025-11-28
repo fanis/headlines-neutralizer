@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      1.6.1
+// @version      1.6.2
 // @description  Tone down sensationalist titles and simplify article body text via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -149,6 +149,7 @@
   const AUTO_DETECT_KEY     = 'neutralizer_autodetect_v1';
   const SHOW_ORIG_KEY       = 'neutralizer_showorig_v1';
   const SHOW_BADGE_KEY      = 'neutralizer_showbadge_v1';
+  const BADGE_COLLAPSED_KEY = 'neutralizer_badge_collapsed_v1';
   const TEMPERATURE_KEY     = 'neutralizer_temperature_v1';
   const SIMPLIFY_BODY_KEY   = 'neutralizer_simplifybody_v1';
   const SIMPLIFICATION_STRENGTH_KEY = 'neutralizer_simplification_v1';
@@ -186,6 +187,9 @@
 
   let SHOW_BADGE = true; // default
   try { const v = await storage.get(SHOW_BADGE_KEY, ''); if (v !== '') SHOW_BADGE = (v === true || v === 'true'); } catch {}
+
+  let BADGE_COLLAPSED = false; // default expanded
+  try { const v = await storage.get(BADGE_COLLAPSED_KEY, ''); if (v !== '') BADGE_COLLAPSED = (v === true || v === 'true'); } catch {}
 
   let SIMPLIFY_BODY = false; // default off
   try { const v = await storage.get(SIMPLIFY_BODY_KEY, ''); if (v !== '') SIMPLIFY_BODY = (v === true || v === 'true'); } catch {}
@@ -452,7 +456,19 @@
         box-shadow: 0 6px 22px rgba(0,0,0,.18) !important;
         display: flex !important; flex-direction: column !important; gap: 6px !important;
         box-sizing: border-box !important; width: auto !important; max-width: 200px;
-        margin: 0 !important; }
+        margin: 0 !important; transition: transform 0.3s ease !important; }
+      .neutralizer-badge.collapsed { transform: translateX(calc(100% - 7px)) !important; }
+      .neutralizer-badge .badge-handle { position: absolute !important; left: 0 !important; top: 50% !important;
+        transform: translateY(-50%) !important; width: 20px !important; height: 50px !important;
+        background: transparent !important; border: none !important;
+        cursor: pointer !important;
+        display: flex !important; align-items: center !important; justify-content: center !important;
+        font-size: 14px !important; color: #0b3d2c !important; user-select: none !important;
+        opacity: 0.4 !important; }
+      .neutralizer-badge .badge-handle:hover { opacity: 0.8 !important; }
+      .neutralizer-badge.collapsed .badge-handle { opacity: 0.6 !important; }
+      .neutralizer-badge .badge-content { display: flex !important; flex-direction: column !important;
+        gap: 6px !important; }
       .neutralizer-badge * { box-sizing: border-box !important; }
       .neutralizer-badge .row { display: flex !important; gap: 8px !important; align-items: center !important;
         justify-content: center !important; margin: 0 !important; padding: 0 !important; width: 100%; }
@@ -1864,28 +1880,29 @@
       location.reload();
     }
   );
-  GM_registerMenuCommand?.(computeDomainDisabled(HOST) ? `Current page: DISABLED` : `Current page: ENABLED`, () => {});
-  if (DOMAINS_MODE === 'allow') {
-    GM_registerMenuCommand?.(listMatchesHost(DOMAIN_ALLOW, HOST) ? 'Remove this domain from allowlist' : 'Add this domain to allowlist', async () => {
-      if (listMatchesHost(DOMAIN_ALLOW, HOST)) {
-        DOMAIN_ALLOW = DOMAIN_ALLOW.filter(p => !domainPatternToRegex(p)?.test(HOST));
+  GM_registerMenuCommand?.(
+    computeDomainDisabled(HOST) ? `Current page: DISABLED (click to enable)` : `Current page: ENABLED (click to disable)`,
+    async () => {
+      if (DOMAINS_MODE === 'allow') {
+        // In allowlist mode: toggle presence in allowlist
+        if (listMatchesHost(DOMAIN_ALLOW, HOST)) {
+          DOMAIN_ALLOW = DOMAIN_ALLOW.filter(p => !domainPatternToRegex(p)?.test(HOST));
+        } else {
+          DOMAIN_ALLOW.push(HOST);
+        }
+        await storage.set(DOMAINS_ALLOW_KEY, JSON.stringify(DOMAIN_ALLOW));
       } else {
-        DOMAIN_ALLOW.push(HOST);
+        // In denylist mode: toggle presence in denylist
+        if (computeDomainDisabled(HOST)) {
+          DOMAIN_DENY = DOMAIN_DENY.filter(p => !domainPatternToRegex(p)?.test(HOST));
+        } else {
+          if (!DOMAIN_DENY.includes(HOST)) DOMAIN_DENY.push(HOST);
+        }
+        await storage.set(DOMAINS_DENY_KEY, JSON.stringify(DOMAIN_DENY));
       }
-      await storage.set(DOMAINS_ALLOW_KEY, JSON.stringify(DOMAIN_ALLOW));
       location.reload();
-    });
-  } else {
-    GM_registerMenuCommand?.(computeDomainDisabled(HOST) ? 'Enable on this domain' : 'Disable on this domain', async () => {
-      if (computeDomainDisabled(HOST)) {
-        DOMAIN_DENY = DOMAIN_DENY.filter(p => !domainPatternToRegex(p)?.test(HOST));
-      } else {
-        if (!DOMAIN_DENY.includes(HOST)) DOMAIN_DENY.push(HOST);
-      }
-      await storage.set(DOMAINS_DENY_KEY, JSON.stringify(DOMAIN_DENY));
-      location.reload();
-    });
-  }
+    }
+  );
 
   // Toggles
   GM_registerMenuCommand?.('--- Toggles ---', () => {});
@@ -1918,6 +1935,7 @@
     // Badge was removed or doesn't exist, recreate it
     badge = document.createElement('div');
     badge.className = 'neutralizer-badge';
+    if (BADGE_COLLAPSED) badge.classList.add('collapsed');
     badge.setAttribute(UI_ATTR,'');
 
     const isArticle = SIMPLIFY_BODY && isArticlePage();
@@ -1928,18 +1946,39 @@
     ` : '';
 
     badge.innerHTML = `
-      <div class="row">
-        <button class="btn primary action">H: neutral</button>
+      <div class="badge-handle" title="${BADGE_COLLAPSED ? 'Expand badge' : 'Collapse badge'}">${BADGE_COLLAPSED ? '◀' : '▶'}</div>
+      <div class="badge-content">
+        <div class="row">
+          <button class="btn primary action">H: neutral</button>
+        </div>
+        ${bodyRow}
+        <div class="provenance">Neutralize Headlines</div>
       </div>
-      ${bodyRow}
-      <div class="provenance">Neutralize Headlines</div>
     `;
     document.body.appendChild(badge);
     badge.querySelector('.action').addEventListener('click', onBadgeAction);
+    badge.querySelector('.badge-handle').addEventListener('click', toggleBadgeCollapse);
     if (isArticle) {
       badge.querySelector('.body-action')?.addEventListener('click', onBodyBadgeAction);
     }
   }
+  async function toggleBadgeCollapse() {
+    BADGE_COLLAPSED = !BADGE_COLLAPSED;
+    await storage.set(BADGE_COLLAPSED_KEY, String(BADGE_COLLAPSED));
+
+    if (BADGE_COLLAPSED) {
+      badge.classList.add('collapsed');
+    } else {
+      badge.classList.remove('collapsed');
+    }
+
+    const handle = badge.querySelector('.badge-handle');
+    if (handle) {
+      handle.title = BADGE_COLLAPSED ? 'Expand badge' : 'Collapse badge';
+      handle.textContent = BADGE_COLLAPSED ? '◀' : '▶';
+    }
+  }
+
   function onBadgeAction() {
     if (badgeState === 'calmed') {
       restoreOriginals();
