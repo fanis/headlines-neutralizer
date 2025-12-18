@@ -1389,6 +1389,9 @@
       shadow.addEventListener('keydown', e => {
         if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); close(); }
       });
+      // Focus the wrapper to enable keyboard events
+      wrap.setAttribute('tabindex', '-1');
+      wrap.focus();
     } else if (mode === 'secret') {
       const inp = shadow.querySelector('#sec');
       const btnSave = shadow.querySelector('.save');
@@ -1552,6 +1555,9 @@
 
     wrap.addEventListener('click', (e) => { if (e.target === wrap) btnCancel.click(); });
     shadow.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); btnCancel.click(); } });
+    // Focus the wrapper to enable keyboard events
+    wrap.setAttribute('tabindex', '-1');
+    wrap.focus();
   }
 
   function openTemperatureDialog() {
@@ -1610,6 +1616,9 @@
 
     wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
     shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    // Focus the wrapper to enable keyboard events
+    wrap.setAttribute('tabindex', '-1');
+    wrap.focus();
   }
 
   function openSimplificationStrengthDialog() {
@@ -1668,6 +1677,9 @@
 
     wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
     shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    // Focus the wrapper to enable keyboard events
+    wrap.setAttribute('tabindex', '-1');
+    wrap.focus();
   }
 
   function openPricingDialog() {
@@ -1765,6 +1777,9 @@
     btnCancel.addEventListener('click', close);
     wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
     shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    // Focus the wrapper to enable keyboard events
+    wrap.setAttribute('tabindex', '-1');
+    wrap.focus();
   }
 
   // ───────────────────────── MENUS ─────────────────────────
