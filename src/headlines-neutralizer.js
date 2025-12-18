@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      1.6.3
+// @version      1.7.0
 // @description  Tone down sensationalist titles and simplify article body text via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -50,6 +50,7 @@
     autoDetect: true,
     minLen: 8,
     maxLen: 180,
+    sanityCheckLen: 500, // Warn user if manual selector matches text > 500 chars
 
     // smarter headline scoring
     minWords: 3,
@@ -139,8 +140,10 @@
   // Per-domain configuration (additive)
   const DOMAIN_SELECTORS_KEY = 'neutralizer_domain_selectors_v2'; // { 'hostname': [...] }
   const DOMAIN_EXCLUDES_KEY = 'neutralizer_domain_excludes_v2'; // { 'hostname': { self: [...], ancestors: [...] } }
+  const LONG_HEADLINE_EXCEPTIONS_KEY = 'neutralizer_long_exceptions_v1'; // { 'hostname': true } - domains allowed to process 500+ char headlines
   let DOMAIN_SELECTORS = {};
   let DOMAIN_EXCLUDES = {};
+  let LONG_HEADLINE_EXCEPTIONS = {};
 
   const DOMAINS_MODE_KEY    = 'neutralizer_domains_mode_v1';     // 'deny' | 'allow'
   const DOMAINS_DENY_KEY    = 'neutralizer_domains_excluded_v1'; // array of patterns
@@ -261,6 +264,7 @@
   // Load per-domain additions
   try { DOMAIN_SELECTORS = JSON.parse(await storage.get(DOMAIN_SELECTORS_KEY, '{}')); } catch {}
   try { DOMAIN_EXCLUDES = JSON.parse(await storage.get(DOMAIN_EXCLUDES_KEY, '{}')); } catch {}
+  try { LONG_HEADLINE_EXCEPTIONS = JSON.parse(await storage.get(LONG_HEADLINE_EXCEPTIONS_KEY, '{}')); } catch {}
 
   // Load domain-specific settings for current host
   if (DOMAIN_SELECTORS[HOST]) {
@@ -751,13 +755,56 @@
   }
 
   // ───────────────────────── ATTACH & OBSERVE ─────────────────────────
-  function attachTargets(root = document) {
-    const hosts = getCandidateElements(root)
-      .map(({el,mode}) => ({el: findTextHost(el), mode}))
-      .filter(({el}) => el && !seenEl.has(el) && withinLen(textTrim(el)) && !isExcluded(el));
+  let longHeadlineCheckPending = false;
 
-    for (const {el: host, mode} of hosts) {
+  async function attachTargets(root = document) {
+    const candidates = getCandidateElements(root)
+      .map(({el,mode}) => ({el: findTextHost(el), mode}))
+      .filter(({el, mode}) => {
+        if (!el || seenEl.has(el) || isExcluded(el)) return false;
+        // Only apply length check to auto-detected elements, not manual selectors
+        if (mode === 'auto' && !withinLen(textTrim(el))) return false;
+        return true;
+      });
+
+    // Check for excessively long manual selections
+    const excessivelyLong = [];
+    const hostsToAttach = [];
+
+    for (const {el: host, mode} of candidates) {
       const text = textTrim(host);
+
+      // Sanity check: manual selectors with text > 500 chars
+      if (mode === 'manual' && text.length > CFG.sanityCheckLen && !LONG_HEADLINE_EXCEPTIONS[HOST]) {
+        excessivelyLong.push({host, text, length: text.length});
+      } else {
+        hostsToAttach.push({host, mode, text});
+      }
+    }
+
+    // If we found excessively long manual selections, ask user once
+    if (excessivelyLong.length > 0 && !longHeadlineCheckPending) {
+      longHeadlineCheckPending = true;
+      const result = await showLongHeadlineDialog(excessivelyLong);
+      longHeadlineCheckPending = false;
+
+      if (result) {
+        // User approved processing
+        for (const {host, text} of excessivelyLong) {
+          hostsToAttach.push({host, mode: 'manual', text});
+        }
+
+        // If user chose "remember", save exception for this domain
+        if (result === true) {
+          LONG_HEADLINE_EXCEPTIONS[HOST] = true;
+          await storage.set(LONG_HEADLINE_EXCEPTIONS_KEY, JSON.stringify(LONG_HEADLINE_EXCEPTIONS));
+        }
+      }
+      // else: skip these elements
+    }
+
+    // Attach the approved hosts
+    for (const {host, mode, text} of hostsToAttach) {
       host.setAttribute('data-neutralizer-mode', mode);
       let set = textToElements.get(text);
       if (!set) { set = new Set(); textToElements.set(text, set); }
@@ -1782,6 +1829,96 @@
     wrap.focus();
   }
 
+  function showLongHeadlineDialog(elements) {
+    return new Promise((resolve) => {
+      const host = document.createElement('div');
+      host.setAttribute(UI_ATTR, '');
+      const shadow = host.attachShadow({ mode: 'open' });
+
+      const style = document.createElement('style');
+      style.textContent = `
+        .wrap { position: fixed; inset: 0; z-index: 2147483647; background: rgba(0,0,0,.55);
+                display: flex; align-items: center; justify-content: center; }
+        .modal { background: #fff; max-width: 600px; width: 92%; border-radius: 12px;
+                 box-shadow: 0 10px 40px rgba(0,0,0,.4); padding: 20px; box-sizing: border-box; }
+        .modal h3 { margin: 0 0 16px; font: 700 18px/1.3 system-ui, sans-serif; color: #1a1a1a; }
+        .modal p { margin: 0 0 12px; font: 14px/1.6 system-ui, sans-serif; color: #444; }
+        .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px;
+                   margin: 16px 0; border-radius: 4px; }
+        .warning-icon { font-size: 20px; margin-right: 8px; }
+        .element-list { background: #f8f9fa; padding: 12px; border-radius: 6px; margin: 12px 0;
+                        max-height: 200px; overflow-y: auto; }
+        .element-item { font: 12px/1.5 ui-monospace, Consolas, monospace; color: #666;
+                        margin: 6px 0; padding: 6px; background: #fff; border-radius: 4px; }
+        .element-length { color: #d32f2f; font-weight: 600; }
+        .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+        .btn { padding: 10px 20px; border-radius: 8px; border: none;
+               font: 600 14px system-ui, sans-serif; cursor: pointer; transition: all 0.15s ease; }
+        .btn.primary { background: #1a73e8; color: #fff; }
+        .btn.primary:hover { background: #1557b0; }
+        .btn.success { background: #34a853; color: #fff; }
+        .btn.success:hover { background: #2d8e47; }
+        .btn.secondary { background: #e8eaed; color: #1a1a1a; }
+        .btn.secondary:hover { background: #dadce0; }
+      `;
+
+      const wrap = document.createElement('div');
+      wrap.className = 'wrap';
+
+      const elementListHTML = elements.slice(0, 5).map(({text, length}) => `
+        <div class="element-item">
+          <span class="element-length">${length} chars:</span> ${escapeHtml(text.substring(0, 80))}${text.length > 80 ? '...' : ''}
+        </div>
+      `).join('');
+
+      const moreText = elements.length > 5 ? `<p style="text-align:center; font-size:12px; color:#666; margin-top:8px;">...and ${elements.length - 5} more</p>` : '';
+
+      wrap.innerHTML = `
+        <div class="modal" role="dialog" aria-modal="true" aria-label="Long Headlines Detected">
+          <h3>⚠️ Excessively Long Headlines Detected</h3>
+
+          <div class="warning">
+            <span class="warning-icon">⚠️</span>
+            <strong>Your manual selectors matched ${elements.length} element(s) with text longer than ${CFG.sanityCheckLen} characters.</strong>
+          </div>
+
+          <p>These might be entire paragraphs, navigation menus, or article bodies rather than headlines. Processing them will consume unnecessary API tokens.</p>
+
+          <div class="element-list">
+            ${elementListHTML}
+            ${moreText}
+          </div>
+
+          <p><strong>Would you like to process these anyway?</strong></p>
+
+          <div class="actions">
+            <button class="btn secondary skip">Skip These</button>
+            <button class="btn primary process-once">Process Once</button>
+            <button class="btn success remember">Process & Remember for ${HOST}</button>
+          </div>
+        </div>
+      `;
+
+      shadow.append(style, wrap);
+      document.body.appendChild(host);
+
+      const close = (result) => {
+        host.remove();
+        resolve(result);
+      };
+
+      shadow.querySelector('.skip').addEventListener('click', () => close(false));
+      shadow.querySelector('.process-once').addEventListener('click', () => close('once'));
+      shadow.querySelector('.remember').addEventListener('click', () => close(true));
+
+      wrap.addEventListener('click', e => { if (e.target === wrap) close(false); });
+      shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(false); } });
+
+      wrap.setAttribute('tabindex', '-1');
+      wrap.focus();
+    });
+  }
+
   // ───────────────────────── MENUS ─────────────────────────
   // Configuration
   GM_registerMenuCommand?.('--- Configuration ---', () => {});
@@ -1946,6 +2083,15 @@
   GM_registerMenuCommand?.('Process visible now', () => { processVisibleNow(); });
   GM_registerMenuCommand?.('Flush headline cache & rerun', async () => { await cacheClear(); resetAndReindex(); processVisibleNow(); });
   GM_registerMenuCommand?.('Flush body simplification cache', async () => { await bodyCacheClear(); location.reload(); });
+  if (LONG_HEADLINE_EXCEPTIONS[HOST]) {
+    GM_registerMenuCommand?.(`Clear long headline exception (${HOST})`, async () => {
+      if (confirm(`Clear the long headline exception for ${HOST}?\n\nYou'll be prompted again if selectors match text longer than ${CFG.sanityCheckLen} characters.`)) {
+        delete LONG_HEADLINE_EXCEPTIONS[HOST];
+        await storage.set(LONG_HEADLINE_EXCEPTIONS_KEY, JSON.stringify(LONG_HEADLINE_EXCEPTIONS));
+        openInfo(`Cleared long headline exception for ${HOST}.\n\nReload the page to see changes.`);
+      }
+    });
+  }
   GM_registerMenuCommand?.('Reset stats counters', () => { STATS.total = STATS.live = STATS.cache = STATS.batches = 0; CHANGES.length = 0; updateBadgeCounts(); });
   GM_registerMenuCommand?.('Reset API usage stats', async () => { await resetApiTokens(); openInfo('API usage stats reset. Token counters and cost tracking cleared.'); });
 
@@ -1996,15 +2142,615 @@
           <button class="btn primary action">H: neutral</button>
         </div>
         ${bodyRow}
+        <div class="row">
+          <button class="btn inspect" title="Click to inspect any element on the page">🔍 Inspect</button>
+        </div>
       </div>
     `;
     document.body.appendChild(badge);
     badge.querySelector('.action').addEventListener('click', onBadgeAction);
     badge.querySelector('.badge-handle').addEventListener('click', toggleBadgeCollapse);
     badge.querySelector('.badge-header').addEventListener('mousedown', startBadgeDrag);
+    badge.querySelector('.inspect').addEventListener('click', enterInspectionMode);
     if (isArticle) {
       badge.querySelector('.body-action')?.addEventListener('click', onBodyBadgeAction);
     }
+  }
+
+  // ───────────────────────── INSPECTION MODE ─────────────────────────
+  let inspectionOverlay = null;
+  let inspectedElement = null;
+
+  function enterInspectionMode() {
+    if (inspectionOverlay) return; // Already in inspection mode
+
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.setAttribute(UI_ATTR, '');
+    overlay.style.cssText = `
+      position: fixed; inset: 0; z-index: 2147483645;
+      background: rgba(0, 0, 0, 0.3);
+      font-family: system-ui, sans-serif;
+      pointer-events: none;
+    `;
+
+    // Add instruction message
+    const message = document.createElement('div');
+    message.setAttribute(UI_ATTR, '');
+    message.style.cssText = `
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      background: #1a73e8; color: white; padding: 12px 24px;
+      border-radius: 8px; font-size: 14px; font-weight: 600;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 2147483646;
+      pointer-events: none;
+    `;
+    message.textContent = '🔍 Inspection Mode - Click any element to analyze. ESC to exit.';
+
+    // Set crosshair cursor on body
+    const originalCursor = document.body.style.cursor;
+    document.body.style.cursor = 'crosshair';
+
+    document.body.appendChild(overlay);
+    document.body.appendChild(message);
+    inspectionOverlay = { overlay, message, originalCursor };
+
+    // Hover highlight
+    let currentHighlight = null;
+    const onMouseMove = (e) => {
+      // Find element under cursor (overlay is pointer-events:none so this works)
+      const target = document.elementFromPoint(e.clientX, e.clientY);
+      if (!target || target.closest(`[${UI_ATTR}]`)) return; // Skip our own UI
+
+      // Remove previous highlight
+      if (currentHighlight && currentHighlight !== target) {
+        currentHighlight.style.outline = currentHighlight._origOutline || '';
+        currentHighlight.style.outlineOffset = currentHighlight._origOutlineOffset || '';
+        delete currentHighlight._origOutline;
+        delete currentHighlight._origOutlineOffset;
+      }
+
+      // Add new highlight
+      if (currentHighlight !== target) {
+        currentHighlight = target;
+        currentHighlight._origOutline = currentHighlight.style.outline;
+        currentHighlight._origOutlineOffset = currentHighlight.style.outlineOffset;
+        currentHighlight.style.outline = '2px dashed #1a73e8';
+        currentHighlight.style.outlineOffset = '2px';
+      }
+    };
+
+    // Click handler
+    const onClick = (e) => {
+      // Find element under cursor
+      const target = document.elementFromPoint(e.clientX, e.clientY);
+      if (!target || target.closest(`[${UI_ATTR}]`)) return; // Skip our own UI
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      inspectedElement = target;
+
+      // Permanent highlight
+      if (currentHighlight) {
+        currentHighlight.style.outline = currentHighlight._origOutline || '';
+        currentHighlight.style.outlineOffset = currentHighlight._origOutlineOffset || '';
+        delete currentHighlight._origOutline;
+        delete currentHighlight._origOutlineOffset;
+      }
+
+      inspectedElement._origOutline = inspectedElement.style.outline;
+      inspectedElement._origOutlineOffset = inspectedElement.style.outlineOffset;
+      inspectedElement.style.outline = '3px solid #ea4335';
+      inspectedElement.style.outlineOffset = '2px';
+
+      exitInspectionMode();
+      showDiagnosticDialog(inspectedElement);
+    };
+
+    // ESC handler
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        exitInspectionMode();
+      }
+    };
+
+    document.body.addEventListener('mousemove', onMouseMove, true);
+    document.addEventListener('click', onClick, true);
+    document.addEventListener('keydown', onKeyDown);
+
+    // Store handlers for cleanup
+    inspectionOverlay.onMouseMove = onMouseMove;
+    inspectionOverlay.onClick = onClick;
+    inspectionOverlay.onKeyDown = onKeyDown;
+    inspectionOverlay.currentHighlight = () => currentHighlight;
+  }
+
+  function exitInspectionMode() {
+    if (!inspectionOverlay) return;
+
+    const { overlay, message, onMouseMove, onClick, onKeyDown, currentHighlight, originalCursor } = inspectionOverlay;
+
+    // Remove highlight
+    const el = currentHighlight?.();
+    if (el) {
+      el.style.outline = el._origOutline || '';
+      el.style.outlineOffset = el._origOutlineOffset || '';
+      delete el._origOutline;
+      delete el._origOutlineOffset;
+    }
+
+    // Restore original cursor
+    document.body.style.cursor = originalCursor;
+
+    // Remove event listeners
+    document.body.removeEventListener('mousemove', onMouseMove, true);
+    document.removeEventListener('click', onClick, true);
+    document.removeEventListener('keydown', onKeyDown);
+
+    // Remove DOM elements
+    overlay.remove();
+    message.remove();
+
+    inspectionOverlay = null;
+  }
+
+  function diagnoseElement(el) {
+    const text = textTrim(el);
+    const selector = generateCSSSelector(el);
+
+    // Check auto-detection
+    const autoDetect = {
+      matched: false,
+      reasons: []
+    };
+
+    if (el.closest(`[${UI_ATTR}]`)) {
+      autoDetect.reasons.push('Part of script\'s own UI');
+    } else if (isEditable(el)) {
+      autoDetect.reasons.push('Editable element (input/textarea)');
+    } else {
+      // Check headline heuristics
+      const cardParent = el.closest(CARD_SELECTOR);
+      if (cardParent) autoDetect.reasons.push('✓ Inside card/article container');
+
+      const tag = el.tagName.toLowerCase();
+      if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a'].includes(tag)) {
+        autoDetect.reasons.push(`✓ Headline tag: <${tag}>`);
+      }
+
+      if (withinLen(text)) {
+        autoDetect.reasons.push(`✓ Length OK (${text.length} chars)`);
+      } else {
+        autoDetect.reasons.push(`✗ Length ${text.length} chars (need ${CFG.minLen}-${CFG.maxLen})`);
+      }
+
+      if (isLikelyKicker(el, text)) {
+        autoDetect.reasons.push('✗ Detected as kicker/label (excluded)');
+      }
+
+      if (el.closest(UI_CONTAINERS)) {
+        autoDetect.reasons.push('✗ Inside UI container (meta/byline/tools)');
+      }
+
+      // Simplified auto-detection check
+      autoDetect.matched = cardParent && ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a'].includes(tag) &&
+                          withinLen(text) && !isLikelyKicker(el, text) && !el.closest(UI_CONTAINERS);
+    }
+
+    // Check global selectors
+    const globalSelectors = findMatchingSelectors(el, SELECTORS_GLOBAL);
+
+    // Check domain selectors
+    const domainSelectors = findMatchingSelectors(el, SELECTORS_DOMAIN);
+
+    // Check global exclusions
+    const globalExclusions = findMatchingExclusions(el, EXCLUDE_GLOBAL);
+
+    // Check domain exclusions
+    const domainExclusions = findMatchingExclusions(el, EXCLUDE_DOMAIN);
+
+    // Publisher opt-out
+    const hasOptOut = document.querySelector('meta[name="neutralizer"][content="opt-out"]') !== null;
+
+    // Final determination
+    const isProcessed = !isExcluded(el) && (autoDetect.matched || globalSelectors.length > 0 || domainSelectors.length > 0);
+
+    return {
+      element: el,
+      selector,
+      text: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
+      tag: el.tagName.toLowerCase(),
+      classes: Array.from(el.classList).join(' '),
+      id: el.id,
+      autoDetect,
+      globalSelectors,
+      domainSelectors,
+      globalExclusions,
+      domainExclusions,
+      hasOptOut,
+      isExcluded: isExcluded(el),
+      isProcessed
+    };
+  }
+
+  function findMatchingSelectors(el, selectorList) {
+    const matches = [];
+    for (const sel of selectorList) {
+      try {
+        if (el.matches(sel)) {
+          matches.push(sel);
+        }
+      } catch (e) {
+        // Invalid selector, skip
+      }
+    }
+    return matches;
+  }
+
+  function findMatchingExclusions(el, excludeObj) {
+    const matches = { self: [], ancestors: [] };
+
+    if (excludeObj.self) {
+      for (const sel of excludeObj.self) {
+        try {
+          if (el.matches(sel)) {
+            matches.self.push(sel);
+          }
+        } catch (e) {
+          // Invalid selector, skip
+        }
+      }
+    }
+
+    if (excludeObj.ancestors) {
+      for (const sel of excludeObj.ancestors) {
+        try {
+          if (el.closest(sel)) {
+            matches.ancestors.push(sel);
+          }
+        } catch (e) {
+          // Invalid selector, skip
+        }
+      }
+    }
+
+    return matches;
+  }
+
+  function generateCSSSelector(el) {
+    // Try ID first
+    if (el.id) {
+      return `#${CSS.escape(el.id)}`;
+    }
+
+    // Try classes
+    if (el.classList.length > 0) {
+      const classes = Array.from(el.classList).map(c => `.${CSS.escape(c)}`).join('');
+      return `${el.tagName.toLowerCase()}${classes}`;
+    }
+
+    // Fallback to tag + nth-child
+    let path = [];
+    let current = el;
+    while (current && current !== document.body) {
+      let selector = current.tagName.toLowerCase();
+
+      if (current.id) {
+        selector = `#${CSS.escape(current.id)}`;
+        path.unshift(selector);
+        break;
+      }
+
+      let sibling = current;
+      let nth = 1;
+      while (sibling.previousElementSibling) {
+        sibling = sibling.previousElementSibling;
+        if (sibling.tagName === current.tagName) nth++;
+      }
+
+      if (nth > 1 || current.nextElementSibling) {
+        selector += `:nth-child(${nth})`;
+      }
+
+      path.unshift(selector);
+      current = current.parentElement;
+
+      if (path.length > 3) break; // Keep it reasonably short
+    }
+
+    return path.join(' > ');
+  }
+
+  function showDiagnosticDialog(el) {
+    const diag = diagnoseElement(el);
+
+    const host = document.createElement('div');
+    host.setAttribute(UI_ATTR, '');
+    const shadow = host.attachShadow({ mode: 'open' });
+
+    const style = document.createElement('style');
+    style.textContent = `
+      .wrap { position: fixed; inset: 0; z-index: 2147483647; background: rgba(0,0,0,.55);
+              display: flex; align-items: center; justify-content: center; }
+      .modal { background: #fff; max-width: 700px; width: 94%; max-height: 90vh;
+               overflow-y: auto; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,.4);
+               padding: 20px; box-sizing: border-box; }
+      .modal h3 { margin: 0 0 16px; font: 700 18px/1.3 system-ui, sans-serif; color: #1a1a1a; }
+      .section { margin: 16px 0; padding: 12px; background: #f8f9fa; border-radius: 8px; }
+      .section-title { font: 600 14px system-ui, sans-serif; margin: 0 0 8px; color: #444; }
+      .info-row { margin: 4px 0; font: 13px/1.5 ui-monospace, Consolas, monospace; color: #666; }
+      .info-label { font-weight: 600; color: #333; }
+      .status { display: inline-block; padding: 4px 12px; border-radius: 6px; font: 600 13px system-ui, sans-serif;
+                margin: 8px 0; }
+      .status.processed { background: #d4edda; color: #155724; }
+      .status.not-processed { background: #f8d7da; color: #721c24; }
+      .status.excluded { background: #fff3cd; color: #856404; }
+      .list { margin: 8px 0; padding-left: 20px; }
+      .list li { margin: 4px 0; font: 13px/1.5 system-ui, sans-serif; }
+      .list li.match { color: #155724; }
+      .list li.no-match { color: #666; }
+      .list li.problem { color: #721c24; font-weight: 600; }
+      .code { background: #f1f3f4; padding: 2px 6px; border-radius: 4px;
+              font: 12px ui-monospace, Consolas, monospace; color: #333; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
+      .btn { padding: 10px 16px; border-radius: 8px; border: none;
+             font: 600 13px system-ui, sans-serif; cursor: pointer; transition: all 0.15s ease; }
+      .btn.primary { background: #1a73e8; color: #fff; }
+      .btn.primary:hover { background: #1557b0; }
+      .btn.secondary { background: #e8eaed; color: #1a1a1a; }
+      .btn.secondary:hover { background: #dadce0; }
+      .btn.success { background: #34a853; color: #fff; }
+      .btn.success:hover { background: #2d8e47; }
+      .btn.danger { background: #ea4335; color: #fff; }
+      .btn.danger:hover { background: #d33426; }
+    `;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'wrap';
+
+    // Build status message
+    let statusClass, statusText;
+    if (diag.isExcluded) {
+      statusClass = 'excluded';
+      statusText = '⚠️ EXCLUDED - Not being processed';
+    } else if (diag.isProcessed) {
+      statusClass = 'processed';
+      statusText = '✅ MATCHED - Being processed';
+    } else {
+      statusClass = 'not-processed';
+      statusText = '❌ NOT MATCHED - Not being processed';
+    }
+
+    // Build auto-detection section
+    const autoDetectHTML = diag.autoDetect.reasons.length > 0 ?
+      `<ul class="list">${diag.autoDetect.reasons.map(r => `<li class="${r.startsWith('✓') ? 'match' : 'no-match'}">${r}</li>`).join('')}</ul>` :
+      '<p class="info-row">No auto-detection analysis available.</p>';
+
+    // Build selectors section
+    const globalSelectorsHTML = diag.globalSelectors.length > 0 ?
+      `<ul class="list">${diag.globalSelectors.map(s => `<li class="match">✓ <span class="code">${escapeHtml(s)}</span></li>`).join('')}</ul>` :
+      '<p class="info-row no-match">No global selectors match this element.</p>';
+
+    const domainSelectorsHTML = diag.domainSelectors.length > 0 ?
+      `<ul class="list">${diag.domainSelectors.map(s => `<li class="match">✓ <span class="code">${escapeHtml(s)}</span></li>`).join('')}</ul>` :
+      '<p class="info-row no-match">No domain selectors configured or matched.</p>';
+
+    // Build exclusions section
+    const globalExclusionsHTML = (diag.globalExclusions.self.length > 0 || diag.globalExclusions.ancestors.length > 0) ?
+      `<ul class="list">
+        ${diag.globalExclusions.self.map(s => `<li class="problem">✗ Element matches: <span class="code">${escapeHtml(s)}</span></li>`).join('')}
+        ${diag.globalExclusions.ancestors.map(s => `<li class="problem">✗ Ancestor matches: <span class="code">${escapeHtml(s)}</span></li>`).join('')}
+      </ul>` :
+      '<p class="info-row no-match">No global exclusions affect this element.</p>';
+
+    const domainExclusionsHTML = (diag.domainExclusions.self?.length > 0 || diag.domainExclusions.ancestors?.length > 0) ?
+      `<ul class="list">
+        ${(diag.domainExclusions.self || []).map(s => `<li class="problem">✗ Element matches: <span class="code">${escapeHtml(s)}</span></li>`).join('')}
+        ${(diag.domainExclusions.ancestors || []).map(s => `<li class="problem">✗ Ancestor matches: <span class="code">${escapeHtml(s)}</span></li>`).join('')}
+      </ul>` :
+      '<p class="info-row no-match">No domain exclusions configured or affect this element.</p>';
+
+    wrap.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Element Inspection">
+        <h3>🔍 Element Inspection</h3>
+
+        <div class="section">
+          <div class="section-title">Element Information</div>
+          <div class="info-row"><span class="info-label">Tag:</span> &lt;${diag.tag}&gt;</div>
+          <div class="info-row"><span class="info-label">ID:</span> ${diag.id || '(none)'}</div>
+          <div class="info-row"><span class="info-label">Classes:</span> ${diag.classes || '(none)'}</div>
+          <div class="info-row"><span class="info-label">Text:</span> "${escapeHtml(diag.text)}"</div>
+          <div class="info-row"><span class="info-label">CSS Selector:</span> <span class="code">${escapeHtml(diag.selector)}</span></div>
+        </div>
+
+        <div class="status ${statusClass}">${statusText}</div>
+
+        <div class="section">
+          <div class="section-title">Auto-Detection Analysis</div>
+          ${autoDetectHTML}
+        </div>
+
+        <div class="section">
+          <div class="section-title">Global Selectors</div>
+          ${globalSelectorsHTML}
+        </div>
+
+        <div class="section">
+          <div class="section-title">Domain Selectors (${HOST})</div>
+          ${domainSelectorsHTML}
+        </div>
+
+        <div class="section">
+          <div class="section-title">Global Exclusions</div>
+          ${globalExclusionsHTML}
+        </div>
+
+        <div class="section">
+          <div class="section-title">Domain Exclusions (${HOST})</div>
+          ${domainExclusionsHTML}
+        </div>
+
+        ${diag.hasOptOut ? '<div class="section"><div class="section-title">⚠️ Publisher Opt-Out Detected</div><p class="info-row">This page has requested to opt-out from neutralization.</p></div>' : ''}
+
+        <div class="actions">
+          ${buildActionButtons(diag)}
+          <button class="btn secondary copy-selector">📋 Copy Selector</button>
+          <button class="btn secondary close">Close</button>
+        </div>
+      </div>
+    `;
+
+    shadow.append(style, wrap);
+    document.body.appendChild(host);
+
+    const close = () => {
+      // Remove element highlight
+      if (inspectedElement) {
+        inspectedElement.style.outline = inspectedElement._origOutline || '';
+        inspectedElement.style.outlineOffset = inspectedElement._origOutlineOffset || '';
+        delete inspectedElement._origOutline;
+        delete inspectedElement._origOutlineOffset;
+        inspectedElement = null;
+      }
+      host.remove();
+    };
+
+    // Close button
+    shadow.querySelector('.close').addEventListener('click', close);
+    wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+    shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+
+    // Copy selector button
+    shadow.querySelector('.copy-selector').addEventListener('click', () => {
+      navigator.clipboard.writeText(diag.selector).then(() => {
+        const btn = shadow.querySelector('.copy-selector');
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        setTimeout(() => btn.textContent = orig, 2000);
+      });
+    });
+
+    // Action buttons
+    attachActionHandlers(shadow, diag, close);
+
+    // Focus
+    wrap.setAttribute('tabindex', '-1');
+    wrap.focus();
+  }
+
+  function buildActionButtons(diag) {
+    const buttons = [];
+
+    // If excluded by global exclusions, offer to remove them
+    if (diag.globalExclusions.self.length > 0) {
+      diag.globalExclusions.self.forEach(sel => {
+        buttons.push(`<button class="btn danger remove-global-excl-self" data-selector="${escapeHtml(sel)}">Remove Global Exclusion: ${escapeHtml(sel)}</button>`);
+      });
+    }
+    if (diag.globalExclusions.ancestors.length > 0) {
+      diag.globalExclusions.ancestors.forEach(sel => {
+        buttons.push(`<button class="btn danger remove-global-excl-anc" data-selector="${escapeHtml(sel)}">Remove Global Ancestor Exclusion: ${escapeHtml(sel)}</button>`);
+      });
+    }
+
+    // If excluded by domain exclusions, offer to remove them
+    if (diag.domainExclusions.self?.length > 0) {
+      diag.domainExclusions.self.forEach(sel => {
+        buttons.push(`<button class="btn danger remove-domain-excl-self" data-selector="${escapeHtml(sel)}">Remove Domain Exclusion: ${escapeHtml(sel)}</button>`);
+      });
+    }
+    if (diag.domainExclusions.ancestors?.length > 0) {
+      diag.domainExclusions.ancestors.forEach(sel => {
+        buttons.push(`<button class="btn danger remove-domain-excl-anc" data-selector="${escapeHtml(sel)}">Remove Domain Ancestor Exclusion: ${escapeHtml(sel)}</button>`);
+      });
+    }
+
+    // If not matched by any selectors and not auto-detected, offer to add as selector
+    if (!diag.isProcessed && !diag.isExcluded) {
+      buttons.push(`<button class="btn success add-global-sel">Add as Global Selector</button>`);
+      buttons.push(`<button class="btn success add-domain-sel">Add as Domain Selector</button>`);
+    }
+
+    return buttons.join('');
+  }
+
+  function attachActionHandlers(shadow, diag, closeDialog) {
+    // Remove global exclusions
+    shadow.querySelectorAll('.remove-global-excl-self').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const sel = btn.getAttribute('data-selector');
+        EXCLUDE_GLOBAL.self = EXCLUDE_GLOBAL.self.filter(s => s !== sel);
+        await storage.set(EXCLUDES_KEY, JSON.stringify(EXCLUDE_GLOBAL));
+        EXCLUDE.self = [...EXCLUDE_GLOBAL.self, ...(EXCLUDE_DOMAIN.self || [])];
+        openInfo(`Removed global exclusion: ${sel}\nReload the page to see changes.`);
+        closeDialog();
+      });
+    });
+
+    shadow.querySelectorAll('.remove-global-excl-anc').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const sel = btn.getAttribute('data-selector');
+        EXCLUDE_GLOBAL.ancestors = EXCLUDE_GLOBAL.ancestors.filter(s => s !== sel);
+        await storage.set(EXCLUDES_KEY, JSON.stringify(EXCLUDE_GLOBAL));
+        EXCLUDE.ancestors = [...EXCLUDE_GLOBAL.ancestors, ...(EXCLUDE_DOMAIN.ancestors || [])];
+        openInfo(`Removed global ancestor exclusion: ${sel}\nReload the page to see changes.`);
+        closeDialog();
+      });
+    });
+
+    // Remove domain exclusions
+    shadow.querySelectorAll('.remove-domain-excl-self').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const sel = btn.getAttribute('data-selector');
+        if (DOMAIN_EXCLUDES[HOST]) {
+          DOMAIN_EXCLUDES[HOST].self = (DOMAIN_EXCLUDES[HOST].self || []).filter(s => s !== sel);
+          await storage.set(DOMAIN_EXCLUDES_KEY, JSON.stringify(DOMAIN_EXCLUDES));
+          EXCLUDE_DOMAIN.self = DOMAIN_EXCLUDES[HOST].self || [];
+          EXCLUDE.self = [...EXCLUDE_GLOBAL.self, ...EXCLUDE_DOMAIN.self];
+        }
+        openInfo(`Removed domain exclusion: ${sel}\nReload the page to see changes.`);
+        closeDialog();
+      });
+    });
+
+    shadow.querySelectorAll('.remove-domain-excl-anc').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const sel = btn.getAttribute('data-selector');
+        if (DOMAIN_EXCLUDES[HOST]) {
+          DOMAIN_EXCLUDES[HOST].ancestors = (DOMAIN_EXCLUDES[HOST].ancestors || []).filter(s => s !== sel);
+          await storage.set(DOMAIN_EXCLUDES_KEY, JSON.stringify(DOMAIN_EXCLUDES));
+          EXCLUDE_DOMAIN.ancestors = DOMAIN_EXCLUDES[HOST].ancestors || [];
+          EXCLUDE.ancestors = [...EXCLUDE_GLOBAL.ancestors, ...EXCLUDE_DOMAIN.ancestors];
+        }
+        openInfo(`Removed domain ancestor exclusion: ${sel}\nReload the page to see changes.`);
+        closeDialog();
+      });
+    });
+
+    // Add as global selector
+    shadow.querySelectorAll('.add-global-sel').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        SELECTORS_GLOBAL.push(diag.selector);
+        await storage.set(SELECTORS_KEY, JSON.stringify(SELECTORS_GLOBAL));
+        SELECTORS = [...SELECTORS_GLOBAL, ...SELECTORS_DOMAIN];
+        openInfo(`Added global selector: ${diag.selector}\nReload the page to see changes.`);
+        closeDialog();
+      });
+    });
+
+    // Add as domain selector
+    shadow.querySelectorAll('.add-domain-sel').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!DOMAIN_SELECTORS[HOST]) DOMAIN_SELECTORS[HOST] = [];
+        DOMAIN_SELECTORS[HOST].push(diag.selector);
+        await storage.set(DOMAIN_SELECTORS_KEY, JSON.stringify(DOMAIN_SELECTORS));
+        SELECTORS_DOMAIN = DOMAIN_SELECTORS[HOST] || [];
+        SELECTORS = [...SELECTORS_GLOBAL, ...SELECTORS_DOMAIN];
+        openInfo(`Added domain selector: ${diag.selector}\nReload the page to see changes.`);
+        closeDialog();
+      });
+    });
   }
 
   // ───────────────────────── BADGE DRAGGING ─────────────────────────

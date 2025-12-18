@@ -1,6 +1,6 @@
 # Neutralize Headlines Userscript - Setup & Usage Guide
 
-> **Latest Version**: 1.6.2 | [See What's New](CHANGELOG.md)
+> **Latest Version**: 1.7.0 | [See What's New](CHANGELOG.md)
 
 ## Table of Contents
 - [What It Does](#what-it-does)
@@ -45,10 +45,11 @@
   OpenAI's API. It tones down dramatic language while preserving factual content, making your browsing experience
   calmer and more informative.
 
-  **New in 1.5.0:** On article pages, it can also simplify body text by removing convoluted phrasing and jargon
-  while preserving all facts, quotes, and meaning.
+  **New in 1.5.0:** On article pages, it can also simplify body text by removing convoluted phrasing and jargon while preserving all facts, quotes, and meaning.
 
   **New in 1.6.0:** API usage tracking and cost monitoring with real token counts, plus 3-5x faster body simplification.
+
+  **New in 1.7.0:** Element Inspection Mode - powerful diagnostic tool to troubleshoot selector configurations. Click 🔍 Inspect in the badge, then click any element to see exactly why it's being processed or ignored, with one-click fixes.
 
 ##  Features:
   - Automatic headline detection using smart heuristics
@@ -56,6 +57,7 @@
   - **Article body text simplification** (removes jargon, preserves facts and quotes)
   - Adjustable simplification strength (5 levels from Minimal to Maximum)
   - Smart article page detection (only simplifies on article pages, not listings)
+  - **Element Inspection Mode** - Diagnostic tool to troubleshoot why elements are/aren't being processed
   - Global + per-domain CSS selector configuration
   - Per-domain additions to selectors and exclusions
   - Per-domain enable/disable control (allowlist or denylist mode)
@@ -63,6 +65,7 @@
   - On-page badge to restore/reapply changes (with body simplification toggle on article pages)
   - Visual flash animation when headlines are neutralized
   - **API usage tracking and cost monitoring** with real token counts and configurable pricing
+  - **Sanity check for long headlines** - Warns before processing text > 500 characters (prevents token waste)
   - Stats dialog shows API usage, cache statistics, and all changes
 
   ---
@@ -143,7 +146,19 @@
   Badge Controls:
   - **H: neutral / H: original** - Toggle between neutral and original headlines
   - **B: original / B: simplified** - Toggle between original and simplified body text (article pages only)
+  - **🔍 Inspect** - Activate inspection mode to diagnose why elements are/aren't being processed
   - **(12)** - Number of headlines neutralized on this page
+
+  **Inspection Mode:**
+  - Click the 🔍 Inspect button to activate
+  - Click any element on the page to see why it's matched/excluded
+  - Shows detailed diagnostic information:
+    - Element details (tag, classes, ID, CSS selector)
+    - Processing status (matched, not matched, or excluded)
+    - Which selectors match/exclude the element
+    - Auto-detection reasoning
+  - Action buttons to add selectors or remove exclusions
+  - Press ESC to exit inspection mode
 
   To hide the badge: Use the menu option "Toggle badge (ON/OFF)"
 
@@ -329,18 +344,30 @@
 
 ###  Headlines Not Detected
 
-  1. Try manual selectors:
+  1. **Use Inspection Mode (Recommended)**:
+     - Click the 🔍 Inspect button in the badge
+     - Click the headline you want to check
+     - The diagnostic dialog will show exactly why it's not being processed:
+       - ❌ Not matched by selectors → Use "Add as Global/Domain Selector" button
+       - ⚠️ Excluded by a rule → Use "Remove Exclusion" button
+       - ✅ Matched → Check if it's over 500 characters (sanity check blocking it)
+  2. Try manual selectors:
      - For all sites: Menu → "Edit GLOBAL target selectors"
      - For this site only: Menu → "Edit DOMAIN additions: target selectors"
-  2. Adjust exclusions: You might be excluding too much
+  3. Adjust exclusions: You might be excluding too much
      - Check both global and domain-specific exclusions
-  3. Check if publisher opted out: Console will show "publisher opt-out detected"
+  4. Check if publisher opted out: Console will show "publisher opt-out detected"
 
 ###  Too Many/Wrong Elements Processed
 
-  1. Disable auto-detect: Menu → "Toggle auto-detect (OFF)"
-  2. Use only manual selectors for precise targeting
-  3. Add problematic elements to exclusions:
+  1. **Use Inspection Mode**:
+     - Click the 🔍 Inspect button in the badge
+     - Click the unwanted element being processed
+     - Check which selector is matching it
+     - Use the diagnostic dialog to add exclusions or remove problematic selectors
+  2. Disable auto-detect: Menu → "Toggle auto-detect (OFF)"
+  3. Use only manual selectors for precise targeting
+  4. Add problematic elements to exclusions:
      - For all sites: Menu → "Edit GLOBAL excludes"
      - For this site only: Menu → "Edit DOMAIN additions: excludes"
 

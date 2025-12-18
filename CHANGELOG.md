@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.7.0] - 2025-12-18
+
+### Added
+- **Element Inspection Mode** - Click 🔍 in badge, then click any element to see why it's matched/excluded with one-click fixes
+- **Sanity check for long headlines** - Warns before processing text > 500 chars to prevent token waste. Per-domain exceptions with menu option to clear
+
+### Fixed
+- All dialogs now close with ESC key (pricing, welcome, strength selection)
+- Manual selectors now bypass the 180-char limit (only auto-detection uses length validation)
+
 ## [1.6.3] - 2025-12-18
 
 ### Improved
