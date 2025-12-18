@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.6.3] - 2025-12-18
+
+### Improved
+- **Compact and flexible badge design**
+  - Badge now auto-sizes to fit content (1 or 2 buttons) instead of fixed width
+  - Minimum width ensures button visibility, maximum width adapts to content
+  - Significantly reduced visual footprint when only showing headline neutralization button
+
+- **Enhanced badge styling**
+  - Moved "Neutralize Headlines" text from footer to distinct header section
+  - Header uses darker green gradient (matching color scheme) for better contrast
+  - Main content area changed to translucent light gray background (rgba(255,255,255,0.95))
+  - Cleaner, more professional appearance with better visual hierarchy
+
+### Fixed
+- Badge collapse animation now correctly hides badge on right edge of screen
+- Collapsible handle visibility restored (was being clipped by overflow)
+
+
 ## [1.6.2] - 2025-11-28
 
 ### Added

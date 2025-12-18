@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      1.6.2
+// @version      1.6.3
 // @description  Tone down sensationalist titles and simplify article body text via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -131,7 +131,7 @@
   let SELECTORS = []; // merged result
 
   const EXCLUDES_KEY = 'neutralizer_excludes_v1'; // global defaults
-  const DEFAULT_EXCLUDES = { self: [], ancestors: ['header','footer','nav','aside','[role="navigation"]','.breadcrumbs','[aria-label*="breadcrumb" i]'] };
+  const DEFAULT_EXCLUDES = { self: [], ancestors: ['footer','nav','aside','[role="navigation"]','.breadcrumbs','[aria-label*="breadcrumb" i]'] };
   let EXCLUDE_GLOBAL = { ...DEFAULT_EXCLUDES, ancestors: [...DEFAULT_EXCLUDES.ancestors] };
   let EXCLUDE_DOMAIN = { self: [], ancestors: [] }; // domain-specific additions
   let EXCLUDE = { self: [], ancestors: [] }; // merged result
@@ -150,6 +150,7 @@
   const SHOW_ORIG_KEY       = 'neutralizer_showorig_v1';
   const SHOW_BADGE_KEY      = 'neutralizer_showbadge_v1';
   const BADGE_COLLAPSED_KEY = 'neutralizer_badge_collapsed_v1';
+  const BADGE_POS_KEY       = 'neutralizer_badge_pos_v1';
   const TEMPERATURE_KEY     = 'neutralizer_temperature_v1';
   const SIMPLIFY_BODY_KEY   = 'neutralizer_simplifybody_v1';
   const SIMPLIFICATION_STRENGTH_KEY = 'neutralizer_simplification_v1';
@@ -190,6 +191,9 @@
 
   let BADGE_COLLAPSED = false; // default expanded
   try { const v = await storage.get(BADGE_COLLAPSED_KEY, ''); if (v !== '') BADGE_COLLAPSED = (v === true || v === 'true'); } catch {}
+
+  let BADGE_POS = { x: window.innerWidth - 220, y: window.innerHeight - 200 }; // default near bottom-right
+  try { const v = await storage.get(BADGE_POS_KEY, ''); if (v) BADGE_POS = JSON.parse(v); } catch {}
 
   let SIMPLIFY_BODY = false; // default off
   try { const v = await storage.get(SIMPLIFY_BODY_KEY, ''); if (v !== '') SIMPLIFY_BODY = (v === true || v === 'true'); } catch {}
@@ -450,25 +454,35 @@
              box-shadow: 0 0 0 2px rgba(0,0,0,.03), 0 0 12px rgba(0,0,0,.12); }
         100% { background-color: transparent; box-shadow: none; }
       }
-      .neutralizer-badge { position: fixed !important; right: 12px; bottom: 14px; z-index: 2147483646;
-        font: 12px/1.4 system-ui, sans-serif !important; color: #0b3d2c !important; background: #c9f6e1 !important;
-        border: 1px solid #79d4b0 !important; padding: 8px 10px !important; border-radius: 10px !important;
+      .neutralizer-badge { position: fixed !important; z-index: 2147483646;
+        font: 12px/1.4 system-ui, sans-serif !important; color: #0b3d2c !important;
+        background: rgba(255,255,255,0.95) !important;
+        border: 1px solid #79d4b0 !important; padding: 0 !important; border-radius: 10px !important;
         box-shadow: 0 6px 22px rgba(0,0,0,.18) !important;
-        display: flex !important; flex-direction: column !important; gap: 6px !important;
-        box-sizing: border-box !important; width: auto !important; max-width: 200px;
-        margin: 0 !important; transition: transform 0.3s ease !important; }
-      .neutralizer-badge.collapsed { transform: translateX(calc(100% - 7px)) !important; }
-      .neutralizer-badge .badge-handle { position: absolute !important; left: 0 !important; top: 50% !important;
-        transform: translateY(-50%) !important; width: 20px !important; height: 50px !important;
-        background: transparent !important; border: none !important;
-        cursor: pointer !important;
+        display: flex !important; flex-direction: column !important; gap: 0 !important;
+        box-sizing: border-box !important; width: max-content !important; min-width: 120px !important;
+        margin: 0 !important; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        user-select: none !important; }
+      .neutralizer-badge.collapsed { right: 0 !important; left: auto !important;
+        transform: translateX(calc(100% - 1px)) !important; border-right: none !important;
+        border-radius: 10px 0 0 10px !important; box-shadow: -4px 0 22px rgba(0,0,0,.18) !important; }
+      .neutralizer-badge.dragging { transition: none !important; cursor: grabbing !important; }
+      .neutralizer-badge .badge-handle { position: absolute !important; left: -28px !important; top: 50% !important;
+        transform: translateY(-50%) !important; width: 28px !important; height: 56px !important;
+        background: linear-gradient(90deg, #d4f8e8 0%, #c9f6e1 100%) !important; border: 1px solid #79d4b0 !important; border-right: none !important;
+        border-radius: 8px 0 0 8px !important; cursor: pointer !important;
         display: flex !important; align-items: center !important; justify-content: center !important;
         font-size: 14px !important; color: #0b3d2c !important; user-select: none !important;
-        opacity: 0.4 !important; }
-      .neutralizer-badge .badge-handle:hover { opacity: 0.8 !important; }
-      .neutralizer-badge.collapsed .badge-handle { opacity: 0.6 !important; }
+        box-shadow: -3px 0 12px rgba(0,0,0,.12) !important; transition: all 0.2s ease !important; }
+      .neutralizer-badge .badge-handle:hover { left: -30px !important; box-shadow: -4px 0 16px rgba(0,0,0,.18) !important; }
+      .neutralizer-badge .badge-header { background: linear-gradient(135deg, #2d6a54 0%, #0b3d2c 100%) !important;
+        color: #fff !important; padding: 6px 10px !important; font-size: 10px !important;
+        font-weight: 600 !important; text-align: center !important; cursor: grab !important;
+        user-select: none !important; border-radius: 9px 9px 0 0 !important;
+        letter-spacing: 0.3px !important; }
+      .neutralizer-badge .badge-header:active { cursor: grabbing !important; }
       .neutralizer-badge .badge-content { display: flex !important; flex-direction: column !important;
-        gap: 6px !important; }
+        gap: 6px !important; padding: 8px 10px !important; }
       .neutralizer-badge * { box-sizing: border-box !important; }
       .neutralizer-badge .row { display: flex !important; gap: 8px !important; align-items: center !important;
         justify-content: center !important; margin: 0 !important; padding: 0 !important; width: 100%; }
@@ -481,8 +495,6 @@
         border-color: #0b3d2c !important; }
       .neutralizer-badge .btn:disabled { opacity: 0.6 !important; cursor: not-allowed !important; }
       .neutralizer-badge .small { font-size: 11px !important; opacity: .9 !important; }
-      .neutralizer-badge .provenance { font-size: 10px !important; opacity: .7 !important;
-        text-align: center !important; margin: 0 !important; padding: 0 !important; }
     `;
     document.head.appendChild(style);
   }
@@ -1938,6 +1950,22 @@
     if (BADGE_COLLAPSED) badge.classList.add('collapsed');
     badge.setAttribute(UI_ATTR,'');
 
+    // Set initial position
+    const maxX = window.innerWidth - 220;
+    const maxY = window.innerHeight - 200;
+    BADGE_POS.x = Math.max(0, Math.min(BADGE_POS.x, maxX));
+    BADGE_POS.y = Math.max(0, Math.min(BADGE_POS.y, maxY));
+
+    // Always set top position
+    badge.style.top = `${BADGE_POS.y}px`;
+
+    // Set horizontal position based on collapse state
+    if (BADGE_COLLAPSED) {
+      badge.style.right = '0px';
+    } else {
+      badge.style.left = `${BADGE_POS.x}px`;
+    }
+
     const isArticle = SIMPLIFY_BODY && isArticlePage();
     const bodyRow = isArticle ? `
       <div class="row">
@@ -1946,35 +1974,103 @@
     ` : '';
 
     badge.innerHTML = `
-      <div class="badge-handle" title="${BADGE_COLLAPSED ? 'Expand badge' : 'Collapse badge'}">${BADGE_COLLAPSED ? '◀' : '▶'}</div>
+      <div class="badge-handle" title="${BADGE_COLLAPSED ? 'Open' : 'Close'}">${BADGE_COLLAPSED ? '◀' : '▶'}</div>
+      <div class="badge-header">NEUTRALIZE HEADLINES</div>
       <div class="badge-content">
         <div class="row">
           <button class="btn primary action">H: neutral</button>
         </div>
         ${bodyRow}
-        <div class="provenance">Neutralize Headlines</div>
       </div>
     `;
     document.body.appendChild(badge);
     badge.querySelector('.action').addEventListener('click', onBadgeAction);
     badge.querySelector('.badge-handle').addEventListener('click', toggleBadgeCollapse);
+    badge.querySelector('.badge-header').addEventListener('mousedown', startBadgeDrag);
     if (isArticle) {
       badge.querySelector('.body-action')?.addEventListener('click', onBodyBadgeAction);
     }
+  }
+
+  // ───────────────────────── BADGE DRAGGING ─────────────────────────
+  let isBadgeDragging = false;
+  let badgeDragOffset = { x: 0, y: 0 };
+
+  function startBadgeDrag(e) {
+    // Don't drag if collapsed
+    if (BADGE_COLLAPSED) return;
+
+    isBadgeDragging = true;
+    badge.classList.add('dragging');
+
+    const rect = badge.getBoundingClientRect();
+    badgeDragOffset.x = e.clientX - rect.left;
+    badgeDragOffset.y = e.clientY - rect.top;
+
+    document.addEventListener('mousemove', onBadgeDrag);
+    document.addEventListener('mouseup', stopBadgeDrag);
+
+    e.preventDefault();
+  }
+
+  function onBadgeDrag(e) {
+    if (!isBadgeDragging) return;
+
+    let newX = e.clientX - badgeDragOffset.x;
+    let newY = e.clientY - badgeDragOffset.y;
+
+    // Constrain to viewport
+    const maxX = window.innerWidth - badge.offsetWidth;
+    const maxY = window.innerHeight - badge.offsetHeight;
+    newX = Math.max(0, Math.min(newX, maxX));
+    newY = Math.max(0, Math.min(newY, maxY));
+
+    badge.style.left = `${newX}px`;
+    badge.style.top = `${newY}px`;
+
+    BADGE_POS = { x: newX, y: newY };
+  }
+
+  function stopBadgeDrag() {
+    if (!isBadgeDragging) return;
+
+    isBadgeDragging = false;
+    badge.classList.remove('dragging');
+
+    document.removeEventListener('mousemove', onBadgeDrag);
+    document.removeEventListener('mouseup', stopBadgeDrag);
+
+    storage.set(BADGE_POS_KEY, JSON.stringify(BADGE_POS));
   }
   async function toggleBadgeCollapse() {
     BADGE_COLLAPSED = !BADGE_COLLAPSED;
     await storage.set(BADGE_COLLAPSED_KEY, String(BADGE_COLLAPSED));
 
+    const currentY = parseInt(badge.style.top) || BADGE_POS.y;
+
     if (BADGE_COLLAPSED) {
       badge.classList.add('collapsed');
+      // Position on right edge for collapse animation
+      badge.style.left = '';
+      badge.style.right = '0px';
+      badge.style.top = `${currentY}px`;
     } else {
       badge.classList.remove('collapsed');
+      // Restore to saved position or default near right edge
+      const rightEdgeX = BADGE_POS.x || (window.innerWidth - 220);
+
+      badge.style.right = '';
+      badge.style.left = `${rightEdgeX}px`;
+      badge.style.top = `${currentY}px`;
+
+      // Update saved position
+      BADGE_POS = { x: rightEdgeX, y: currentY };
+      storage.set(BADGE_POS_KEY, JSON.stringify(BADGE_POS));
     }
 
     const handle = badge.querySelector('.badge-handle');
     if (handle) {
-      handle.title = BADGE_COLLAPSED ? 'Expand badge' : 'Collapse badge';
+      handle.title = BADGE_COLLAPSED ? 'Open' : 'Close';
       handle.textContent = BADGE_COLLAPSED ? '◀' : '▶';
     }
   }
