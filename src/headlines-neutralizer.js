@@ -3,8 +3,8 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      1.7.0
-// @description  Tone down sensationalist titles and simplify article body text via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
+// @version      1.8.0
+// @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
 // @exclude      moz-extension:*
@@ -79,8 +79,7 @@
 
   // API token usage tracking (persistent, not cleared with stats)
   let API_TOKENS = {
-    headlines: { input: 0, output: 0, calls: 0 },
-    body: { input: 0, output: 0, calls: 0 }
+    headlines: { input: 0, output: 0, calls: 0 }
   };
 
   // API Pricing configuration (user-editable)
@@ -155,8 +154,6 @@
   const BADGE_COLLAPSED_KEY = 'neutralizer_badge_collapsed_v1';
   const BADGE_POS_KEY       = 'neutralizer_badge_pos_v1';
   const TEMPERATURE_KEY     = 'neutralizer_temperature_v1';
-  const SIMPLIFY_BODY_KEY   = 'neutralizer_simplifybody_v1';
-  const SIMPLIFICATION_STRENGTH_KEY = 'neutralizer_simplification_v1';
   const FIRST_INSTALL_KEY   = 'neutralizer_installed_v1';
   const API_TOKENS_KEY      = 'neutralizer_api_tokens_v1';
   const PRICING_KEY         = 'neutralizer_pricing_v1';
@@ -172,18 +169,6 @@
   const TEMPERATURE_ORDER = ['Minimal', 'Light', 'Moderate', 'Strong', 'Maximum'];
   let TEMPERATURE_LEVEL = 'Moderate'; // default level name
 
-  // Simplification strength levels mapping
-  const SIMPLIFICATION_LEVELS = {
-    'Minimal': 0.0,
-    'Light': 0.1,
-    'Moderate': 0.2,
-    'Strong': 0.3,
-    'Maximum': 0.4
-  };
-  const SIMPLIFICATION_ORDER = ['Minimal', 'Light', 'Moderate', 'Strong', 'Maximum'];
-  let SIMPLIFICATION_LEVEL = 'Moderate'; // default level name
-  let SIMPLIFICATION_TEMPERATURE = SIMPLIFICATION_LEVELS['Moderate'];
-
   // load toggles
   try { const v = await storage.get(DEBUG_KEY, ''); if (v !== '') CFG.DEBUG = (v === true || v === 'true'); } catch {}
   try { const v = await storage.get(AUTO_DETECT_KEY, ''); if (v !== '') CFG.autoDetect = (v === true || v === 'true'); } catch {}
@@ -198,9 +183,6 @@
   let BADGE_POS = { x: window.innerWidth - 220, y: window.innerHeight - 200 }; // default near bottom-right
   try { const v = await storage.get(BADGE_POS_KEY, ''); if (v) BADGE_POS = JSON.parse(v); } catch {}
 
-  let SIMPLIFY_BODY = false; // default off
-  try { const v = await storage.get(SIMPLIFY_BODY_KEY, ''); if (v !== '') SIMPLIFY_BODY = (v === true || v === 'true'); } catch {}
-
   // load temperature setting
   try {
     const v = await storage.get(TEMPERATURE_KEY, '');
@@ -210,19 +192,9 @@
     }
   } catch {}
 
-  // load simplification strength setting
-  try {
-    const v = await storage.get(SIMPLIFICATION_STRENGTH_KEY, '');
-    if (v !== '' && SIMPLIFICATION_LEVELS[v] !== undefined) {
-      SIMPLIFICATION_LEVEL = v;
-      SIMPLIFICATION_TEMPERATURE = SIMPLIFICATION_LEVELS[v];
-    }
-  } catch {}
-
   async function setDebug(on)         { CFG.DEBUG = !!on; await storage.set(DEBUG_KEY, String(CFG.DEBUG)); location.reload(); }
   async function setAutoDetect(on)    { CFG.autoDetect = !!on; await storage.set(AUTO_DETECT_KEY, String(CFG.autoDetect)); location.reload(); }
   async function setShowBadge(on)     { SHOW_BADGE = !!on; await storage.set(SHOW_BADGE_KEY, String(SHOW_BADGE)); location.reload(); }
-  async function setSimplifyBody(on)  { SIMPLIFY_BODY = !!on; await storage.set(SIMPLIFY_BODY_KEY, String(SIMPLIFY_BODY)); location.reload(); }
 
   async function setTemperature(level) {
     if (TEMPERATURE_LEVELS[level] === undefined) return;
@@ -232,29 +204,14 @@
     location.reload();
   }
 
-  async function setSimplificationStrength(level) {
-    if (SIMPLIFICATION_LEVELS[level] === undefined) return;
-    SIMPLIFICATION_LEVEL = level;
-    SIMPLIFICATION_TEMPERATURE = SIMPLIFICATION_LEVELS[level];
-    await storage.set(SIMPLIFICATION_STRENGTH_KEY, level);
-    location.reload();
-  }
-
   // domain mode + lists
   let DOMAINS_MODE   = 'deny'; // default
   let DOMAIN_DENY    = [];
   let DOMAIN_ALLOW   = [];
 
   const CACHE_KEY = 'neutralizer_cache_v1';
-  const BODY_CACHE_KEY = 'neutralizer_body_cache_v1';
   let CACHE = {};
-  let BODY_CACHE = {};
   let cacheDirty = false;
-  let bodyCacheDirty = false;
-
-  // Body cache config - store fewer articles but more data per article
-  const BODY_CACHE_LIMIT = 30;      // max articles
-  const BODY_CACHE_TRIM_TO = 20;    // trim to this many articles
 
   // Load persisted data
   // Load global settings
@@ -292,7 +249,6 @@
   try { DOMAIN_DENY  = JSON.parse(await storage.get(DOMAINS_DENY_KEY, JSON.stringify(DOMAIN_DENY))); } catch {}
   try { DOMAIN_ALLOW = JSON.parse(await storage.get(DOMAINS_ALLOW_KEY, JSON.stringify(DOMAIN_ALLOW))); } catch {}
   try { CACHE = JSON.parse(await storage.get(CACHE_KEY, '{}')); } catch {}
-  try { BODY_CACHE = JSON.parse(await storage.get(BODY_CACHE_KEY, '{}')); } catch {}
   try {
     const stored = await storage.get(API_TOKENS_KEY, '');
     if (stored) API_TOKENS = JSON.parse(stored);
@@ -315,7 +271,7 @@
 
   // ───────────────────────── DOMAIN MATCHING ─────────────────────────
   function globToRegExp(glob) {
-    const esc = s => s.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    const esc = s => s.replace(/[.+^${}()|[\]\\*?]/g, '\\$&');
     const g = esc(glob).replace(/\\\*/g,'.*').replace(/\\\?/g,'.');
     return new RegExp(`^${g}$`, 'i');
   }
@@ -468,7 +424,7 @@
         margin: 0 !important; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
         user-select: none !important; }
       .neutralizer-badge.collapsed { right: 0 !important; left: auto !important;
-        transform: translateX(calc(100% - 1px)) !important; border-right: none !important;
+        transform: translateX(100%) !important; border-right: none !important;
         border-radius: 10px 0 0 10px !important; box-shadow: -4px 0 22px rgba(0,0,0,.18) !important; }
       .neutralizer-badge.dragging { transition: none !important; cursor: grabbing !important; }
       .neutralizer-badge .badge-handle { position: absolute !important; left: -28px !important; top: 50% !important;
@@ -542,72 +498,6 @@
   }
   async function cacheClear() { CACHE = {}; await storage.set(CACHE_KEY, JSON.stringify(CACHE)); }
 
-  // ───────────────────────── BODY CACHE ─────────────────────────
-  function simpleHash(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return Math.abs(hash).toString(36);
-  }
-
-  function getBodyCacheKey(url, paragraphTexts) {
-    // Create a cache key from URL + hash of concatenated paragraph texts
-    const contentHash = simpleHash(paragraphTexts.join('|||'));
-    return `${url}::${contentHash}`;
-  }
-
-  function bodyCacheGet(url, paragraphTexts) {
-    const key = getBodyCacheKey(url, paragraphTexts);
-    const cached = BODY_CACHE[key];
-    if (!cached) return null;
-
-    // Update timestamp for LRU
-    cached.t = Date.now();
-    bodyCacheDirty = true;
-    return cached.simplified;
-  }
-
-  function bodyCacheSet(url, paragraphTexts, simplified) {
-    const key = getBodyCacheKey(url, paragraphTexts);
-    BODY_CACHE[key] = {
-      simplified,
-      t: Date.now(),
-      url,
-      count: paragraphTexts.length
-    };
-    bodyCacheDirty = true;
-
-    const size = Object.keys(BODY_CACHE).length;
-    if (size > BODY_CACHE_LIMIT) {
-      // Trim cache
-      queueMicrotask(() => {
-        const keys = Object.keys(BODY_CACHE);
-        if (keys.length <= BODY_CACHE_LIMIT) return;
-        keys.sort((a,b) => BODY_CACHE[a].t - BODY_CACHE[b].t);
-        const toDrop = Math.max(0, keys.length - BODY_CACHE_TRIM_TO);
-        for (let i = 0; i < toDrop; i++) delete BODY_CACHE[keys[i]];
-        storage.set(BODY_CACHE_KEY, JSON.stringify(BODY_CACHE));
-        bodyCacheDirty = false;
-        log('body cache trimmed:', keys.length, '→', Object.keys(BODY_CACHE).length);
-      });
-    } else if (bodyCacheDirty) {
-      clearTimeout(bodyCacheSet._t);
-      bodyCacheSet._t = setTimeout(() => {
-        storage.set(BODY_CACHE_KEY, JSON.stringify(BODY_CACHE));
-        bodyCacheDirty = false;
-      }, 500);
-    }
-  }
-
-  async function bodyCacheClear() {
-    BODY_CACHE = {};
-    await storage.set(BODY_CACHE_KEY, JSON.stringify(BODY_CACHE));
-    log('body cache cleared');
-  }
-
   // ───────────────────────── API TOKEN TRACKING ─────────────────────────
   function updateApiTokens(type, usage) {
     if (!usage) return;
@@ -637,16 +527,15 @@
 
   async function resetApiTokens() {
     API_TOKENS = {
-      headlines: { input: 0, output: 0, calls: 0 },
-      body: { input: 0, output: 0, calls: 0 }
+      headlines: { input: 0, output: 0, calls: 0 }
     };
     await storage.set(API_TOKENS_KEY, JSON.stringify(API_TOKENS));
     log('API token stats reset');
   }
 
   function calculateApiCost() {
-    const inputCost = (API_TOKENS.headlines.input + API_TOKENS.body.input) * PRICING.inputPer1M / 1_000_000;
-    const outputCost = (API_TOKENS.headlines.output + API_TOKENS.body.output) * PRICING.outputPer1M / 1_000_000;
+    const inputCost = API_TOKENS.headlines.input * PRICING.inputPer1M / 1_000_000;
+    const outputCost = API_TOKENS.headlines.output * PRICING.outputPer1M / 1_000_000;
     return inputCost + outputCost;
   }
 
@@ -1041,320 +930,6 @@
     openInfo(`Unknown error${s ? ' ('+s+')' : ''}. Check your network or try again.`);
   }
 
-  // ───────────────────────── BODY SIMPLIFICATION ─────────────────────────
-  let articleBodyParagraphs = null;
-  let bodySimplified = false;
-
-  function isArticlePage() {
-    // Check for strong article indicators first (high confidence)
-    const strongArticleSelectors = [
-      '[itemprop="articleBody"]',
-      '.article-body',
-      '.post-content',
-      '.entry-content',
-      '[class*="article-content"]',
-      '[class*="post-body"]'
-    ];
-
-    for (const selector of strongArticleSelectors) {
-      if (document.querySelector(selector)) return true;
-    }
-
-    // Exclude homepage/listing pages
-    const path = location.pathname;
-    const isHomepage = path === '/' || path === '' || path === '/index.html' || path === '/index.php';
-
-    if (isHomepage) {
-      return false;
-    }
-
-    // Check for listing-specific classes
-    const listingIndicators = [
-      '.post-list', '.article-list', '.news-list',
-      '.category-list', '.archive-list'
-    ];
-    for (const selector of listingIndicators) {
-      if (document.querySelector(selector)) return false;
-    }
-
-    // Check for article element with semantic markup
-    const articles = document.querySelectorAll('article');
-    if (articles.length === 1) {
-      const article = articles[0];
-      if (article.getAttribute('role') === 'article' ||
-          article.getAttribute('itemtype')?.includes('Article')) {
-        return true;
-      }
-    }
-
-    // URL pattern suggests article (has numbers suggesting specific content)
-    const hasArticleUrlPattern = /\/\d{4,}\/|\/\d{4}-\d{2}-\d{2}\//.test(path);
-
-    // Check for long-form content
-    const mainContent = document.querySelector('article, main, [role="main"]');
-    if (mainContent) {
-      const paragraphs = mainContent.querySelectorAll('p');
-      let substantialParagraphs = 0;
-      for (const p of paragraphs) {
-        if (p.textContent.trim().length > 100) substantialParagraphs++;
-        if (substantialParagraphs >= 4) return true;
-      }
-    }
-
-    // If URL pattern suggests article, require more evidence
-    if (hasArticleUrlPattern) {
-      const allParagraphs = document.querySelectorAll('article p, main p, [role="main"] p');
-      let totalLength = 0;
-      for (const p of allParagraphs) {
-        totalLength += p.textContent.trim().length;
-        if (totalLength > 800) return true;
-      }
-    }
-
-    return false;
-  }
-
-  function extractArticleBody() {
-    // Try multiple strategies to find article body paragraphs
-    const strategies = [
-      // Strategy 1: Look for semantic article body markers
-      () => document.querySelector('[itemprop="articleBody"]'),
-      () => document.querySelector('article[itemtype*="Article"]'),
-      () => document.querySelector('.article-body'),
-      () => document.querySelector('.post-content'),
-      () => document.querySelector('.entry-content'),
-      () => document.querySelector('[class*="article-content"]'),
-      () => document.querySelector('[class*="post-body"]'),
-      // Strategy 2: Look for article or main tags
-      () => document.querySelector('article'),
-      () => document.querySelector('main'),
-      () => document.querySelector('[role="main"]')
-    ];
-
-    let container = null;
-    for (const strategy of strategies) {
-      container = strategy();
-      if (container) break;
-    }
-
-    if (!container) return [];
-
-    // Extract paragraphs, excluding UI elements
-    const paragraphs = Array.from(container.querySelectorAll('p'));
-    return paragraphs.filter(p => {
-      // Filter out short paragraphs (likely UI text)
-      if (p.textContent.trim().length < 50) return false;
-
-      // Filter out paragraphs that are inside excluded containers
-      if (p.closest('[data-neutralizer-ui]')) return false;
-      if (p.closest('.comment, .comments, .sidebar, .navigation, .menu, .footer, .header')) return false;
-
-      // Filter out paragraphs with attributes suggesting they're UI elements
-      if (p.hasAttribute(UI_ATTR)) return false;
-
-      return true;
-    });
-  }
-
-  async function simplifyBodyText(paragraphs) {
-    const KEY = await storage.get('OPENAI_KEY', '');
-    if (!KEY) { openKeyDialog('OpenAI API key missing.'); throw Object.assign(new Error('API key missing'), {status:401}); }
-
-    const texts = paragraphs.map(p => p.textContent.trim());
-    const safeInputs = texts.map(t => t.replace(/[\u2028\u2029]/g, ' '));
-
-    const instructions =
-      'You will receive INPUT as a JSON array of article paragraphs.' +
-      ' Simplify each paragraph by removing convoluted phrasing, excessive jargon, and overly complex or epistemic language.' +
-      ' Make the language clearer and more direct while staying in the SAME language as input.' +
-      ' CRITICAL: Do NOT change facts, numbers, names, quotes, or the actual meaning/details of the content.' +
-      ' If a paragraph contains a direct quote inside quotation marks (English "…", Greek «…», etc.), keep that quoted text VERBATIM word-for-word.' +
-      ' Only simplify the wording and sentence structure to make it easier to read.' +
-      ' Preserve all factual information, statistics, proper nouns, and direct quotes exactly as they appear.' +
-      ' Return ONLY a JSON array of simplified strings, same order and count as input.';
-
-    const body = JSON.stringify({
-      model: CFG.model,
-      temperature: SIMPLIFICATION_TEMPERATURE,
-      max_output_tokens: 4000,
-      instructions,
-      input: JSON.stringify(safeInputs)
-    });
-
-    const resText = await xhrPost('https://api.openai.com/v1/responses', body, apiHeaders(KEY));
-    const payload = JSON.parse(resText);
-
-    // Track token usage for body simplification
-    if (payload.usage) {
-      updateApiTokens('body', payload.usage);
-    }
-
-    const outStr = extractOutputText(payload);
-    if (!outStr) throw Object.assign(new Error('No output_text/content from API'), {status:400});
-    const cleaned = outStr.replace(/^```json\s*|\s*```$/g, '');
-    const arr = JSON.parse(cleaned);
-    if (!Array.isArray(arr)) throw Object.assign(new Error('API did not return a JSON array'), {status:400});
-    return arr;
-  }
-
-  async function applyBodySimplification(forceApply = false) {
-    if (!forceApply && !SIMPLIFY_BODY) return;
-    if (bodySimplified) return; // Already simplified
-    if (!isArticlePage()) {
-      log('Not an article page, skipping body simplification');
-      return;
-    }
-
-    try {
-      const paragraphs = extractArticleBody();
-      if (!paragraphs.length) {
-        log('No article body paragraphs found');
-        return;
-      }
-
-      log(`Found ${paragraphs.length} article body paragraphs to simplify`);
-
-      // Store original text
-      articleBodyParagraphs = paragraphs;
-
-      // Mark originals before simplifying
-      paragraphs.forEach(p => {
-        if (!p.hasAttribute('data-neutralizer-body-original')) {
-          p.setAttribute('data-neutralizer-body-original', p.textContent);
-        }
-      });
-
-      const paragraphTexts = paragraphs.map(p => p.textContent.trim());
-      const url = location.href;
-
-      // Check cache first
-      const cached = bodyCacheGet(url, paragraphTexts);
-      if (cached && cached.length === paragraphs.length) {
-        log(`Using cached simplification for ${paragraphs.length} paragraphs`);
-        paragraphs.forEach((p, idx) => {
-          if (cached[idx]) {
-            p.textContent = cached[idx];
-            p.setAttribute('data-neutralizer-body-simplified', '1');
-          }
-        });
-        bodySimplified = true;
-        syncBodyBadgeState();
-        log('Body simplification complete (from cache)');
-        return;
-      }
-
-      // Not in cache - simplify via API in parallel batches
-      const batchSize = 10;
-      const maxConcurrent = 5;
-      const allSimplified = [];
-
-      // Create all batches
-      const batches = [];
-      for (let i = 0; i < paragraphs.length; i += batchSize) {
-        batches.push({
-          paragraphs: paragraphs.slice(i, i + batchSize),
-          startIdx: i
-        });
-      }
-
-      log(`Processing ${batches.length} batches with max ${maxConcurrent} concurrent requests`);
-
-      // Update badge to show progress
-      const updateProgressBadge = (current, total) => {
-        const btn = badge?.querySelector('.body-action');
-        if (btn) {
-          btn.textContent = `B: simplifying ${current}/${total}...`;
-        }
-      };
-
-      // Process batches in chunks of maxConcurrent
-      for (let i = 0; i < batches.length; i += maxConcurrent) {
-        const chunk = batches.slice(i, i + maxConcurrent);
-        const currentChunk = Math.floor(i / maxConcurrent) + 1;
-        const totalChunks = Math.ceil(batches.length / maxConcurrent);
-
-        updateProgressBadge(currentChunk, totalChunks);
-
-        const chunkPromises = chunk.map(batch =>
-          simplifyBodyText(batch.paragraphs).then(simplified => ({
-            simplified,
-            batch
-          }))
-        );
-
-        // Wait for all batches in this chunk to complete
-        const results = await Promise.all(chunkPromises);
-
-        // Apply results to DOM in order
-        results.forEach(({ simplified, batch }) => {
-          allSimplified.push(...simplified);
-          batch.paragraphs.forEach((p, idx) => {
-            if (simplified[idx]) {
-              p.textContent = simplified[idx];
-              p.setAttribute('data-neutralizer-body-simplified', '1');
-            }
-          });
-        });
-
-        log(`Completed chunk ${currentChunk}/${totalChunks} (${chunk.length} batches)`);
-      }
-
-      // Store in cache
-      bodyCacheSet(url, paragraphTexts, allSimplified);
-
-      bodySimplified = true;
-      syncBodyBadgeState();
-      log('Body simplification complete (via API, cached)');
-    } catch (err) {
-      log('Body simplification error:', err);
-      friendlyApiError(err);
-      syncBodyBadgeState(); // Reset badge state on error
-    }
-  }
-
-  function restoreBodyOriginals() {
-    if (!bodySimplified) return;
-
-    const paragraphs = document.querySelectorAll('[data-neutralizer-body-simplified="1"][data-neutralizer-body-original]');
-    let n = 0;
-    paragraphs.forEach(p => {
-      const orig = p.getAttribute('data-neutralizer-body-original');
-      if (typeof orig === 'string') {
-        p.textContent = orig;
-        n++;
-      }
-    });
-
-    bodySimplified = false;
-    log('Restored original body text on', n, 'paragraphs');
-  }
-
-  function reapplyBodySimplification() {
-    if (!articleBodyParagraphs) return;
-
-    // Try to get from cache
-    const paragraphTexts = articleBodyParagraphs.map(p => p.getAttribute('data-neutralizer-body-original') || p.textContent.trim());
-    const url = location.href;
-    const cached = bodyCacheGet(url, paragraphTexts);
-
-    if (cached && cached.length === articleBodyParagraphs.length) {
-      log('Reapplying body simplification from cache');
-      articleBodyParagraphs.forEach((p, idx) => {
-        if (cached[idx]) {
-          p.textContent = cached[idx];
-          p.setAttribute('data-neutralizer-body-simplified', '1');
-        }
-      });
-      bodySimplified = true;
-      syncBodyBadgeState();
-    } else {
-      // Not in cache, need to re-simplify
-      log('Cache miss, re-simplifying body text');
-      bodySimplified = false;
-      applyBodySimplification(true);
-    }
-  }
-
   // ───────────────────────── POLYMORPHIC EDITOR (list/secret/domain) ─────────────────────────
   function parseLines(s) { return s.split(/[\n,;]+/).map(x => x.trim()).filter(Boolean); }
 
@@ -1658,67 +1233,6 @@
       btn.addEventListener('click', async () => {
         const level = btn.getAttribute('data-level');
         await setTemperature(level);
-      });
-    });
-
-    wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
-    shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
-    // Focus the wrapper to enable keyboard events
-    wrap.setAttribute('tabindex', '-1');
-    wrap.focus();
-  }
-
-  function openSimplificationStrengthDialog() {
-    const host = document.createElement('div'); host.setAttribute(UI_ATTR, '');
-    const shadow = host.attachShadow({ mode: 'open' });
-    const style = document.createElement('style');
-    style.textContent = `
-      .wrap{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.45);
-            display:flex;align-items:center;justify-content:center}
-      .modal{background:#fff;max-width:520px;width:92%;border-radius:10px;
-             box-shadow:0 10px 40px rgba(0,0,0,.35);padding:20px;box-sizing:border-box}
-      .modal h3{margin:0 0 16px;font:600 16px/1.2 system-ui,sans-serif}
-      .options{display:flex;flex-direction:column;gap:10px}
-      .option-btn{padding:14px 16px;border-radius:8px;border:2px solid #d0d0d0;background:#fff;
-                  cursor:pointer;text-align:left;font:14px/1.4 system-ui,sans-serif;
-                  transition:all 0.15s ease;display:flex;justify-content:space-between;align-items:center}
-      .option-btn:hover{background:#f8f9fa;border-color:#1a73e8}
-      .option-btn.selected{background:#e8f0fe;border-color:#1a73e8;font-weight:600}
-      .option-btn .label{flex:1}
-      .option-btn .value{color:#666;font-size:12px;margin-left:8px}
-      .option-btn .checkmark{color:#1a73e8;margin-left:8px;font-weight:bold}
-      .hint{margin:16px 0 0;color:#666;font:12px/1.4 system-ui,sans-serif;text-align:center}
-    `;
-    const wrap = document.createElement('div'); wrap.className = 'wrap';
-
-    const optionsHTML = SIMPLIFICATION_ORDER.map(level => {
-      const isSelected = level === SIMPLIFICATION_LEVEL;
-      const value = SIMPLIFICATION_LEVELS[level];
-      return `<button class="option-btn ${isSelected ? 'selected' : ''}" data-level="${level}">
-        <span class="label">${level}</span>
-        <span class="value">${value}</span>
-        ${isSelected ? '<span class="checkmark">✓</span>' : ''}
-      </button>`;
-    }).join('');
-
-    wrap.innerHTML = `
-      <div class="modal" role="dialog" aria-modal="true" aria-label="Simplification Strength">
-        <h3>Simplification Strength</h3>
-        <div class="options">
-          ${optionsHTML}
-        </div>
-        <p class="hint">Select how aggressively to simplify article body text. Lower values preserve more of the original style.</p>
-      </div>`;
-
-    shadow.append(style, wrap);
-    document.body.appendChild(host);
-    const close = () => host.remove();
-
-    // Add click handlers to all option buttons
-    shadow.querySelectorAll('.option-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const level = btn.getAttribute('data-level');
-        await setSimplificationStrength(level);
       });
     });
 
@@ -2071,9 +1585,7 @@
   // Toggles
   GM_registerMenuCommand?.('--- Toggles ---', () => {});
   GM_registerMenuCommand?.(`Neutralization strength (${TEMPERATURE_LEVEL})`, openTemperatureDialog);
-  GM_registerMenuCommand?.(`Simplification strength (${SIMPLIFICATION_LEVEL})`, openSimplificationStrengthDialog);
   GM_registerMenuCommand?.(`Toggle auto-detect (${CFG.autoDetect ? 'ON' : 'OFF'})`, async () => { await setAutoDetect(!CFG.autoDetect); });
-  GM_registerMenuCommand?.(`Toggle body simplification (${SIMPLIFY_BODY ? 'ON' : 'OFF'})`, async () => { await setSimplifyBody(!SIMPLIFY_BODY); });
   GM_registerMenuCommand?.(`Toggle DEBUG logs (${CFG.DEBUG ? 'ON' : 'OFF'})`, async () => { await setDebug(!CFG.DEBUG); });
   GM_registerMenuCommand?.(`Toggle badge (${SHOW_BADGE ? 'ON' : 'OFF'})`, async () => { await setShowBadge(!SHOW_BADGE); });
 
@@ -2082,7 +1594,6 @@
   GM_registerMenuCommand?.('Show stats & changes (diff audit)', showDiffAudit);
   GM_registerMenuCommand?.('Process visible now', () => { processVisibleNow(); });
   GM_registerMenuCommand?.('Flush headline cache & rerun', async () => { await cacheClear(); resetAndReindex(); processVisibleNow(); });
-  GM_registerMenuCommand?.('Flush body simplification cache', async () => { await bodyCacheClear(); location.reload(); });
   if (LONG_HEADLINE_EXCEPTIONS[HOST]) {
     GM_registerMenuCommand?.(`Clear long headline exception (${HOST})`, async () => {
       if (confirm(`Clear the long headline exception for ${HOST}?\n\nYou'll be prompted again if selectors match text longer than ${CFG.sanityCheckLen} characters.`)) {
@@ -2097,7 +1608,6 @@
 
   // ───────────────────────── BADGE (Calmed / Restore) + Per-site toggle ─────────────────────────
   let badge, badgeState = 'calmed'; // 'calmed' or 'originals'
-  let bodyBadgeState = 'original'; // 'original' or 'simplified'
 
   function ensureBadge() {
     if ((DOMAIN_DISABLED || OPTED_OUT) || !SHOW_BADGE) return;
@@ -2112,27 +1622,14 @@
     badge.setAttribute(UI_ATTR,'');
 
     // Set initial position
-    const maxX = window.innerWidth - 220;
     const maxY = window.innerHeight - 200;
-    BADGE_POS.x = Math.max(0, Math.min(BADGE_POS.x, maxX));
     BADGE_POS.y = Math.max(0, Math.min(BADGE_POS.y, maxY));
 
     // Always set top position
     badge.style.top = `${BADGE_POS.y}px`;
 
-    // Set horizontal position based on collapse state
-    if (BADGE_COLLAPSED) {
-      badge.style.right = '0px';
-    } else {
-      badge.style.left = `${BADGE_POS.x}px`;
-    }
-
-    const isArticle = SIMPLIFY_BODY && isArticlePage();
-    const bodyRow = isArticle ? `
-      <div class="row">
-        <button class="btn body-action">B: original</button>
-      </div>
-    ` : '';
+    // Set horizontal position - always flush against right edge
+    badge.style.right = '0px';
 
     badge.innerHTML = `
       <div class="badge-handle" title="${BADGE_COLLAPSED ? 'Open' : 'Close'}">${BADGE_COLLAPSED ? '◀' : '▶'}</div>
@@ -2141,7 +1638,6 @@
         <div class="row">
           <button class="btn primary action">H: neutral</button>
         </div>
-        ${bodyRow}
         <div class="row">
           <button class="btn inspect" title="Click to inspect any element on the page">🔍 Inspect</button>
         </div>
@@ -2152,14 +1648,59 @@
     badge.querySelector('.badge-handle').addEventListener('click', toggleBadgeCollapse);
     badge.querySelector('.badge-header').addEventListener('mousedown', startBadgeDrag);
     badge.querySelector('.inspect').addEventListener('click', enterInspectionMode);
-    if (isArticle) {
-      badge.querySelector('.body-action')?.addEventListener('click', onBodyBadgeAction);
-    }
   }
 
   // ───────────────────────── INSPECTION MODE ─────────────────────────
   let inspectionOverlay = null;
   let inspectedElement = null;
+
+  // Helper function to find the most specific/deepest meaningful element
+  function findMostSpecificElement(x, y) {
+    // Get all elements at this point (from top to bottom)
+    const elements = document.elementsFromPoint(x, y);
+
+    // Filter out our own UI elements
+    const filtered = elements.filter(el => !el.closest(`[${UI_ATTR}]`));
+    if (!filtered.length) return null;
+
+    // Try to find the deepest element that has meaningful content
+    // Prioritize elements with text content or that match our selectors
+    const selectors = compiledSelectors();
+
+    for (const el of filtered) {
+      // Skip if this is just a wrapper/overlay element with no direct text
+      const hasDirectText = Array.from(el.childNodes).some(
+        node => node.nodeType === Node.TEXT_NODE && node.textContent.trim().length > 0
+      );
+
+      // Check if element matches our selectors
+      const matchesSelector = selectors && el.matches?.(selectors);
+
+      // Check if element has meaningful attributes (title, alt, etc.)
+      const hasMeaningfulAttrs = el.hasAttribute('title') || el.hasAttribute('alt') ||
+                                 el.hasAttribute('data-neutralizer-original');
+
+      // Prioritize h1-h6, p, span, a with text, or elements matching our selectors
+      const isContentElement = /^(H[1-6]|P|SPAN|A|DIV)$/i.test(el.tagName);
+      const hasTextContent = el.textContent.trim().length > 0;
+
+      // Accept if: has direct text, matches selectors, has meaningful attrs, or is a content element with text
+      if (hasDirectText || matchesSelector || hasMeaningfulAttrs ||
+          (isContentElement && hasTextContent && el.children.length === 0)) {
+        return el;
+      }
+    }
+
+    // Fallback: return the deepest element that has text content
+    for (const el of filtered) {
+      if (el.textContent.trim().length > 0) {
+        return el;
+      }
+    }
+
+    // Last resort: return the topmost non-UI element
+    return filtered[0];
+  }
 
   function enterInspectionMode() {
     if (inspectionOverlay) return; // Already in inspection mode
@@ -2197,9 +1738,9 @@
     // Hover highlight
     let currentHighlight = null;
     const onMouseMove = (e) => {
-      // Find element under cursor (overlay is pointer-events:none so this works)
-      const target = document.elementFromPoint(e.clientX, e.clientY);
-      if (!target || target.closest(`[${UI_ATTR}]`)) return; // Skip our own UI
+      // Find the most specific element under cursor
+      const target = findMostSpecificElement(e.clientX, e.clientY);
+      if (!target) return;
 
       // Remove previous highlight
       if (currentHighlight && currentHighlight !== target) {
@@ -2221,9 +1762,9 @@
 
     // Click handler
     const onClick = (e) => {
-      // Find element under cursor
-      const target = document.elementFromPoint(e.clientX, e.clientY);
-      if (!target || target.closest(`[${UI_ATTR}]`)) return; // Skip our own UI
+      // Find the most specific element under cursor
+      const target = findMostSpecificElement(e.clientX, e.clientY);
+      if (!target) return;
 
       e.preventDefault();
       e.stopPropagation();
@@ -2817,15 +2358,13 @@
       badge.style.top = `${currentY}px`;
     } else {
       badge.classList.remove('collapsed');
-      // Restore to saved position or default near right edge
-      const rightEdgeX = BADGE_POS.x || (window.innerWidth - 220);
-
-      badge.style.right = '';
-      badge.style.left = `${rightEdgeX}px`;
+      // Position flush against right edge when shown
+      badge.style.left = '';
+      badge.style.right = '0px';
       badge.style.top = `${currentY}px`;
 
       // Update saved position
-      BADGE_POS = { x: rightEdgeX, y: currentY };
+      BADGE_POS = { x: 0, y: currentY };
       storage.set(BADGE_POS_KEY, JSON.stringify(BADGE_POS));
     }
 
@@ -2848,43 +2387,8 @@
     }
   }
 
-  function onBodyBadgeAction() {
-    const btn = badge.querySelector('.body-action');
-    if (bodyBadgeState === 'original') {
-      // Simplify body
-      btn.textContent = 'B: starting...';
-      btn.disabled = true;
-      applyBodySimplification(true).then(() => {
-        // Badge state is synced inside applyBodySimplification
-        btn.disabled = false;
-      }).catch(err => {
-        log('Body simplification error:', err);
-        btn.textContent = 'B: original';
-        btn.disabled = false;
-      });
-    } else {
-      // Restore original
-      restoreBodyOriginals();
-      syncBodyBadgeState();
-    }
-  }
-
   function updateBadgeCounts() {
     // Counts display removed from badge
-  }
-
-  function syncBodyBadgeState() {
-    if (!badge) return;
-    const btn = badge.querySelector('.body-action');
-    if (!btn) return;
-
-    if (bodySimplified) {
-      bodyBadgeState = 'simplified';
-      btn.textContent = 'B: simplified';
-    } else {
-      bodyBadgeState = 'original';
-      btn.textContent = 'B: original';
-    }
   }
 
   function restoreOriginals() {
@@ -2956,14 +2460,12 @@
 
     // Add cache stats section
     const headlineCacheSize = Object.keys(CACHE).length;
-    const bodyCacheSize = Object.keys(BODY_CACHE).length;
-    const bodyCacheArticles = Object.values(BODY_CACHE).map(c => `${c.url} (${c.count}p)`).join('<br>');
 
     // Calculate API usage stats
-    const totalInput = API_TOKENS.headlines.input + API_TOKENS.body.input;
-    const totalOutput = API_TOKENS.headlines.output + API_TOKENS.body.output;
+    const totalInput = API_TOKENS.headlines.input;
+    const totalOutput = API_TOKENS.headlines.output;
     const totalTokens = totalInput + totalOutput;
-    const totalCalls = API_TOKENS.headlines.calls + API_TOKENS.body.calls;
+    const totalCalls = API_TOKENS.headlines.calls;
     const estimatedCost = calculateApiCost();
 
     modal.innerHTML = `
@@ -2971,20 +2473,11 @@
       <div style="background:#f5f5f5;padding:10px;border-radius:6px;margin-bottom:12px;font-size:13px;">
         <strong>Cache Stats:</strong><br>
         Headlines cached: ${headlineCacheSize} entries<br>
-        Body simplifications cached: ${bodyCacheSize} articles<br>
-        ${bodyCacheSize > 0 ? `<details style="margin-top:6px"><summary style="cursor:pointer">Cached articles</summary><div style="font-size:11px;margin-top:4px;max-height:100px;overflow-y:auto">${bodyCacheArticles}</div></details>` : ''}
       </div>
       <div style="background:#e8f4fd;padding:10px;border-radius:6px;margin-bottom:12px;font-size:13px;border-left:3px solid #1a73e8;">
         <strong>API Usage (since install):</strong><br>
         Total API calls: ${totalCalls.toLocaleString()}<br>
         Total tokens: ${totalTokens.toLocaleString()} (${totalInput.toLocaleString()} input, ${totalOutput.toLocaleString()} output)<br>
-        <details style="margin-top:6px">
-          <summary style="cursor:pointer">Breakdown by feature</summary>
-          <div style="font-size:12px;margin-top:4px">
-            <strong>Headlines:</strong> ${API_TOKENS.headlines.calls.toLocaleString()} calls, ${(API_TOKENS.headlines.input + API_TOKENS.headlines.output).toLocaleString()} tokens<br>
-            <strong>Body simplification:</strong> ${API_TOKENS.body.calls.toLocaleString()} calls, ${(API_TOKENS.body.input + API_TOKENS.body.output).toLocaleString()} tokens
-          </div>
-        </details>
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid #ccc;color:#1557b0;font-weight:600">
           Estimated cost: ~$${estimatedCost.toFixed(4)}
         </div>

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [1.8.0] - 2025-12-19
+
+### Removed
+- **Body text simplification feature** - Removed to streamline the tool and focus solely on headline neutralization
+
+### Changed
+- Streamlined badge design to show only headline controls
+- Simplified stats dialog to focus on headline metrics
+
+### Improved
+- Badge positioning now slides flush to right edge when collapsed (no gap near scrollbar)
+- Element inspection now prioritizes most specific elements over wrapper/overlay elements
+
+
 ## [1.7.0] - 2025-12-18
 
 ### Added

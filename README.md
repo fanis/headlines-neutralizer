@@ -1,6 +1,6 @@
 # Neutralize Headlines Userscript - Setup & Usage Guide
 
-> **Latest Version**: 1.7.0 | [See What's New](CHANGELOG.md)
+> **Latest Version**: 1.8.0 | [See What's New](CHANGELOG.md)
 
 ## Table of Contents
 - [What It Does](#what-it-does)
@@ -45,24 +45,19 @@
   OpenAI's API. It tones down dramatic language while preserving factual content, making your browsing experience
   calmer and more informative.
 
-  **New in 1.5.0:** On article pages, it can also simplify body text by removing convoluted phrasing and jargon while preserving all facts, quotes, and meaning.
-
-  **New in 1.6.0:** API usage tracking and cost monitoring with real token counts, plus 3-5x faster body simplification.
-
   **New in 1.7.0:** Element Inspection Mode - powerful diagnostic tool to troubleshoot selector configurations. Click 🔍 Inspect in the badge, then click any element to see exactly why it's being processed or ignored, with one-click fixes.
+
+  **New in 1.8.0:** Streamlined to focus solely on headline neutralization. Body text simplification has been removed.
 
 ##  Features:
   - Automatic headline detection using smart heuristics
   - Adjustable neutralization strength (5 levels from Minimal to Maximum)
-  - **Article body text simplification** (removes jargon, preserves facts and quotes)
-  - Adjustable simplification strength (5 levels from Minimal to Maximum)
-  - Smart article page detection (only simplifies on article pages, not listings)
   - **Element Inspection Mode** - Diagnostic tool to troubleshoot why elements are/aren't being processed
   - Global + per-domain CSS selector configuration
   - Per-domain additions to selectors and exclusions
   - Per-domain enable/disable control (allowlist or denylist mode)
-  - Intelligent caching to minimize API calls (separate caches for headlines and body text)
-  - On-page badge to restore/reapply changes (with body simplification toggle on article pages)
+  - Intelligent caching to minimize API calls
+  - On-page badge to restore/reapply changes
   - Visual flash animation when headlines are neutralized
   - **API usage tracking and cost monitoring** with real token counts and configurable pricing
   - **Sanity check for long headlines** - Warns before processing text > 500 characters (prevents token waste)
@@ -126,26 +121,15 @@
 
   A small badge appears in the bottom-right corner of pages where headlines have been neutralized:
 
-  **On listing/category pages:**
 ```
   ┌─────────────────────────────────────┐
   │ [H: neutral]              (12)      │
-  │ Neutralize Headlines userscript     │
-  └─────────────────────────────────────┘
-```
-
-  **On article pages:**
-```
-  ┌─────────────────────────────────────┐
-  │ [H: neutral]              (12)      │
-  │ [B: original]                       │
   │ Neutralize Headlines userscript     │
   └─────────────────────────────────────┘
 ```
 
   Badge Controls:
   - **H: neutral / H: original** - Toggle between neutral and original headlines
-  - **B: original / B: simplified** - Toggle between original and simplified body text (article pages only)
   - **🔍 Inspect** - Activate inspection mode to diagnose why elements are/aren't being processed
   - **(12)** - Number of headlines neutralized on this page
 
@@ -210,18 +194,6 @@
       - **Maximum (0.5)** - Very aggressive neutralization
     - Current level is shown in menu and highlighted in dialog
     - Setting persists across sessions
-  - **Simplification strength** - Adjust how aggressively body text is simplified
-    - Opens a dialog with 5 levels to choose from:
-      - **Minimal (0.0)** - Most conservative, preserves original style closely
-      - **Light (0.1)** - Subtle simplification with minimal changes
-      - **Moderate (0.2)** - Balanced approach (default)
-      - **Strong (0.3)** - More aggressive simplification
-      - **Maximum (0.4)** - Very aggressive simplification
-    - Current level is shown in menu and highlighted in dialog
-    - Setting persists across sessions
-  - **Toggle body simplification (ON/OFF)** - Auto-simplify body text on article pages
-    - When enabled, body text is automatically simplified on page load
-    - When disabled, you can still manually simplify via the badge button
   - Toggle auto-detect (ON/OFF) - Enable/disable automatic headline detection
     - Turn OFF to rely only on manual CSS selectors
   - Toggle DEBUG logs (ON/OFF) - Show detailed console logs
@@ -232,15 +204,12 @@
   - **Show stats & changes (diff audit)** - View cache statistics and all changes
     - **API Usage & Cost** - Real-time tracking with actual token counts from OpenAI
       - Total input/output tokens and costs since installation
-      - Breakdown by feature (headlines vs body simplification)
       - Based on current pricing configuration (see "Configure API pricing")
       - API stats persist and are independent from clearable page stats
-    - Displays headline cache size and body cache size
-    - Shows list of cached articles with paragraph counts
+    - Displays headline cache size
     - Shows all original → neutralized headline changes on current page
   - **Process visible now** - Manually trigger processing of visible headlines
   - **Flush headline cache & rerun** - Clear headline cache and reprocess everything
-  - **Flush body simplification cache** - Clear all cached article simplifications
   - **Reset stats counters** - Reset the count shown in the badge
 
   ---
@@ -395,12 +364,10 @@
   - Global settings: Stored locally in your browser
   - Domain-specific settings: Stored locally per-domain
   - Headline cache: Stored locally, per-domain, up to 1500 entries
-  - Body simplification cache: Stored locally, up to 30 articles (~240-300KB)
   - Nothing is sent to external servers except OpenAI API calls
 
 ###  What's Sent to OpenAI:
   - Headline text for neutralization
-  - Article body paragraphs for simplification (when enabled)
   - No personal data, cookies, or browsing history
 
   ---
@@ -458,9 +425,7 @@ topKPerCard: 1,      // Increase to 2-3 for multiple headlines per card
   5. Use allowlist mode for sensitive sites - Avoid false positives
   6. Keep cache enabled - Dramatically reduces API costs on revisits
   7. Configure pricing - Update API pricing in settings when OpenAI changes rates for accurate cost tracking
-  8. Try body simplification on article pages - Makes complex articles easier to read
-  9. Adjust simplification strength - Find the right balance between clarity and originality
-  10. Toggle badge OFF for clean UI - Access controls via menu instead
+  8. Toggle badge OFF for clean UI - Access controls via menu instead
 
   ---
 
