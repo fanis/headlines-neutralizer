@@ -1,12 +1,15 @@
 # Neutralize Headlines Userscript - Setup & Usage Guide
 
-> **Latest Version**: 1.8.0 | [See What's New](CHANGELOG.md)
+> **Latest Version**: 2.0.0 | [See What's New](CHANGELOG.md)
 
 ## Table of Contents
 - [What It Does](#what-it-does)
 - [Features](#features)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
+- [Development](#development)
+  - [Building from Source](#building-from-source)
+  - [Running Tests](#running-tests)
 - [How It Works](#how-it-works)
   - [Automatic Detection](#automatic-detection)
   - [Processing Flow](#processing-flow)
@@ -45,9 +48,11 @@
   OpenAI's API. It tones down dramatic language while preserving factual content, making your browsing experience
   calmer and more informative.
 
-  **New in 1.7.0:** Element Inspection Mode - powerful diagnostic tool to troubleshoot selector configurations. Click 🔍 Inspect in the badge, then click any element to see exactly why it's being processed or ignored, with one-click fixes.
+  **New in 2.0.0:** Complete architectural refactoring with modular ES6 code, comprehensive test suite (326 tests, 95.7% passing), class-based architecture for better maintainability, and build system using Rollup. Functionally identical to 1.8.0 for end users.
 
-  **New in 1.8.0:** Streamlined to focus solely on headline neutralization. Body text simplification has been removed.
+  **From 1.8.0:** Streamlined to focus solely on headline neutralization. Body text simplification has been removed.
+
+  **From 1.7.0:** Element Inspection Mode - powerful diagnostic tool to troubleshoot selector configurations. Click 🔍 Inspect in the badge, then click any element to see exactly why it's being processed or ignored, with one-click fixes.
 
 ##  Features:
   - Automatic headline detection using smart heuristics
@@ -80,7 +85,8 @@
 ## Installation
 
 1. Install the userscript:
-  - Open src/headlines-neutralizer.js in your browser
+  - Download `dist/headlines-neutralizer.js` from the repository
+  - Open it in your browser (or drag & drop into browser)
   - Your userscript manager should detect it and prompt you to install
   - Click "Install"
 
@@ -96,6 +102,69 @@
   - The script will automatically enable itself on all websites
 
 3. You're done! The script will now run automatically on websites.
+
+  ---
+## Development
+
+This project uses a modular ES6 architecture with a build system for easy development and testing.
+
+### Building from Source
+
+```bash
+# Install dependencies
+npm install
+
+# Build the userscript
+npm run build
+
+# Output: dist/headlines-neutralizer.js
+```
+
+**Development workflow:**
+```bash
+npm run dev          # Watch mode - auto-rebuild on changes
+npm run build        # Single build
+```
+
+The source code is organized into modules:
+- `src/main.js` - Application entry point
+- `src/modules/` - Individual feature modules (API, DOM, cache, etc.)
+- `src/banner.txt` - Userscript metadata header
+
+After building, install `dist/headlines-neutralizer.js` in your userscript manager.
+
+### Running Tests
+
+The project includes a comprehensive test suite with 326 tests covering unit, integration, and E2E scenarios.
+
+```bash
+npm test             # Unit + integration tests (326 tests, 95.7% passing)
+npm run test:e2e     # E2E browser tests
+npm run test:all     # All tests
+npm run test:coverage # With coverage report
+```
+
+**Interactive test UI:**
+```bash
+npm run test:ui      # Vitest UI
+npm run test:e2e:ui  # Playwright UI
+```
+
+**Test coverage:**
+- Cache operations (LRU eviction, storage, retrieval)
+- Selector matching (globs, regex, domain patterns)
+- DOM manipulation (element detection, replacement, restoration)
+- Badge UI (creation, state, positioning)
+- Inspection mode (element finding, highlighting)
+- API integration (OpenAI calls, token tracking, pricing)
+- Storage (GM fallback chain, persistence)
+- Scoring (headline heuristics, filtering)
+- Utilities (text processing, DOM checks)
+
+For detailed documentation:
+- [BUILD.md](BUILD.md) - Build system and architecture
+- [TESTING.md](TESTING.md) - Testing guide
+- [TESTING-QUICKSTART.md](TESTING-QUICKSTART.md) - Quick start
 
   ---
 ##  How It Works

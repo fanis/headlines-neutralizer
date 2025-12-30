@@ -1,0 +1,23 @@
+⚠️ DEPRECATED - This file is no longer maintained
+================================================
+
+This monolithic file has been refactored into a modular architecture.
+
+New structure:
+- Source: src/main.js + src/modules/*.js
+- Build: npm run build
+- Output: dist/headlines-neutralizer.js
+
+The modular source provides:
+✅ Better testability
+✅ Better maintainability
+✅ Modern architecture
+✅ Same functionality
+
+To edit the userscript:
+1. Edit files in src/modules/
+2. Run: npm run build
+3. Install: dist/headlines-neutralizer.js
+
+This file is kept for reference only.
+Last sync: 2025-12-19 (bug fix: cacheGet line 477)

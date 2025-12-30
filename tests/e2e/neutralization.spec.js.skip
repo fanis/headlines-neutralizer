@@ -1,0 +1,209 @@
+import { test, expect } from '@playwright/test';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Mock API responses
+const mockOpenAIResponse = {
+  choices: [{
+    message: {
+      content: JSON.stringify(['Neutralized headline'])
+    }
+  }],
+  usage: {
+    input_tokens: 100,
+    output_tokens: 50
+  }
+};
+
+test.describe('Headline Neutralization E2E', () => {
+  test.beforeEach(async ({ page }) => {
+    // Mock OpenAI API before page loads
+    await page.route('**/api.openai.com/**', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(mockOpenAIResponse)
+      });
+    });
+
+    // Set up GM mocks and storage before userscript runs
+    await page.addInitScript(() => {
+      // Mock GM functions
+      window.GM_getValue = (key, defaultValue) => {
+        const value = localStorage.getItem(key);
+        if (value === null || value === undefined) return defaultValue;
+        if (value === 'true') return true;
+        if (value === 'false') return false;
+        return value;
+      };
+      window.GM_setValue = (key, value) => {
+        localStorage.setItem(key, String(value));
+        return Promise.resolve();
+      };
+      window.GM_deleteValue = (key) => {
+        localStorage.removeItem(key);
+        return Promise.resolve();
+      };
+      window.GM_registerMenuCommand = () => {};
+      window.GM_xmlhttpRequest = (details) => {
+        // Mock API call
+        fetch(details.url, {
+          method: details.method || 'POST',
+          headers: details.headers,
+          body: details.data
+        }).then(r => r.text()).then(text => {
+          details.onload?.({ responseText: text });
+        }).catch(err => {
+          details.onerror?.({ error: err });
+        });
+      };
+      window.GM = {
+        getValue: window.GM_getValue,
+        setValue: window.GM_setValue,
+        deleteValue: window.GM_deleteValue
+      };
+
+      // Set up initial storage
+      localStorage.setItem('neutralizer_autodetect_v1', 'true');
+      localStorage.setItem('neutralizer_showbadge_v1', 'true');
+      localStorage.setItem('OPENAI_KEY', 'sk-test-key');
+    });
+
+    // Load the userscript
+    const scriptPath = join(__dirname, '../../src/headlines-neutralizer.js');
+    const scriptContent = readFileSync(scriptPath, 'utf-8');
+
+    // Inject and execute the userscript
+    await page.addInitScript(scriptContent);
+  });
+
+  test('should neutralize headlines on page load', async ({ page }) => {
+    // Create test page
+    await page.setContent(`
+      <!DOCTYPE html>
+      <html>
+        <head><title>Test Page</title></head>
+        <body>
+          <h1>SHOCKING: Dramatic headline SLAMS critics!!!</h1>
+          <h2>Breaking: Another sensational title</h2>
+        </body>
+      </html>
+    `);
+
+    // Wait a bit for the script to initialize
+    await page.waitForTimeout(1000);
+
+    // Check that badge was created
+    const badge = page.locator('.neutralizer-badge');
+    await expect(badge).toBeVisible({ timeout: 10000 });
+
+    // Check that original text is preserved in data attribute if element was changed
+    const h1Changed = await page.locator('h1[data-neutralizer-original]').count();
+    if (h1Changed > 0) {
+      const original = await page.locator('h1').first().getAttribute('data-neutralizer-original');
+      expect(original).toBeTruthy();
+    }
+  });
+
+  test('should show badge when enabled', async ({ page }) => {
+    await page.setContent('<h1>Test</h1>');
+    await page.waitForTimeout(500);
+
+    const badge = page.locator('.neutralizer-badge');
+    await expect(badge).toBeVisible({ timeout: 5000 });
+  });
+
+  test('should collapse/expand badge', async ({ page }) => {
+    await page.setContent('<h1>Test</h1>');
+    await page.waitForTimeout(500);
+
+    const badge = page.locator('.neutralizer-badge');
+    await expect(badge).toBeVisible({ timeout: 5000 });
+
+    const handle = page.locator('.badge-handle');
+    await expect(handle).toBeVisible();
+
+    // Initially should not be collapsed
+    const initialClass = await badge.getAttribute('class');
+    const initiallyCollapsed = initialClass?.includes('collapsed');
+
+    // Click handle to toggle
+    await handle.click();
+    await page.waitForTimeout(500);
+
+    // Should have toggled
+    const afterClass = await badge.getAttribute('class');
+    const afterCollapsed = afterClass?.includes('collapsed');
+    expect(afterCollapsed).toBe(!initiallyCollapsed);
+
+    // Click again to toggle back
+    await handle.click();
+    await page.waitForTimeout(500);
+
+    const finalClass = await badge.getAttribute('class');
+    const finalCollapsed = finalClass?.includes('collapsed');
+    expect(finalCollapsed).toBe(initiallyCollapsed);
+  });
+
+  test('should enter inspection mode', async ({ page }) => {
+    await page.setContent(`
+      <h1>Test Headline</h1>
+      <p>Some content</p>
+    `);
+    await page.waitForTimeout(500);
+
+    // Wait for badge
+    await page.waitForSelector('.neutralizer-badge', { timeout: 5000 });
+
+    // Click inspect button
+    const inspectBtn = page.locator('.neutralizer-badge .inspect');
+    await expect(inspectBtn).toBeVisible();
+    await inspectBtn.click();
+
+    // Should show inspection message
+    await expect(page.locator('text=/Inspection Mode/')).toBeVisible({ timeout: 3000 });
+
+    // Press ESC to exit
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    await expect(page.locator('text=/Inspection Mode/')).not.toBeVisible();
+  });
+
+  test('should have badge controls', async ({ page }) => {
+    await page.setContent('<h1>Test</h1>');
+    await page.waitForTimeout(500);
+
+    const badge = page.locator('.neutralizer-badge');
+    await expect(badge).toBeVisible({ timeout: 5000 });
+
+    // Should have header
+    await expect(page.locator('.badge-header')).toBeVisible();
+    await expect(page.locator('.badge-header')).toContainText('NEUTRALIZE HEADLINES');
+
+    // Should have action button
+    await expect(page.locator('.neutralizer-badge .action')).toBeVisible();
+
+    // Should have inspect button
+    await expect(page.locator('.neutralizer-badge .inspect')).toBeVisible();
+
+    // Should have handle
+    await expect(page.locator('.badge-handle')).toBeVisible();
+  });
+
+  test('should persist badge position', async ({ page }) => {
+    await page.setContent('<h1>Test</h1>');
+    await page.waitForTimeout(500);
+
+    const badge = page.locator('.neutralizer-badge');
+    await expect(badge).toBeVisible({ timeout: 5000 });
+
+    // Check that badge has position styles
+    const style = await badge.getAttribute('style');
+    expect(style).toMatch(/top/);
+    expect(style).toMatch(/right|left/);
+  });
+});

@@ -1,0 +1,27 @@
+{
+  "name": "headlines-neutralizer-tests",
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c",
+    "build:watch": "rollup -c -w",
+    "dev": "npm run build:watch",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:all": "npm test && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@vitest/coverage-v8": "^2.1.0",
+    "@vitest/ui": "^2.1.0",
+    "http-server": "^14.1.1",
+    "jsdom": "^25.0.0",
+    "rollup": "^4.53.5",
+    "vitest": "^2.1.0"
+  }
+}

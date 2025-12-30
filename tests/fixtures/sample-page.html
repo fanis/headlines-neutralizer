@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Page - Headlines Neutralizer</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+    h1, h2, h3 { margin-top: 20px; }
+    .card { border: 1px solid #ddd; padding: 16px; margin: 16px 0; }
+    .title { font-weight: 600; }
+    nav, footer { background: #f5f5f5; padding: 16px; }
+  </style>
+</head>
+<body>
+  <nav>
+    <h2>Navigation (should be excluded)</h2>
+    <ul>
+      <li><a href="#">Home</a></li>
+      <li><a href="#">About</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <h1>BREAKING: Shocking headline SLAMS critics with DEVASTATING response!!!</h1>
+
+    <p>This is a test page for the Headlines Neutralizer userscript.</p>
+
+    <h2>EXCLUSIVE: Amazing discovery ROCKS the scientific community!</h2>
+
+    <div class="card">
+      <h3 class="title">Experts are STUNNED by this one weird trick!</h3>
+      <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+    </div>
+
+    <div class="card">
+      <a class="overlay-link" href="#" style="position: absolute;"></a>
+      <h3 class="title">URGENT: Breaking news everyone MUST know about immediately!</h3>
+      <p>This card has an overlay link that should be bypassed in inspection mode.</p>
+    </div>
+
+    <h2>Normal headline without sensationalism</h2>
+    <p>This headline should still be processed but won't change much.</p>
+
+    <div class="article-content">
+      <h3>Another SHOCKING revelation that will BLOW your mind!!!</h3>
+      <p>Article body content here.</p>
+    </div>
+  </main>
+
+  <footer>
+    <h3>Footer (should be excluded)</h3>
+    <p>&copy; 2025 Test Page</p>
+  </footer>
+
+  <!-- Load userscript if in browser extension context -->
+  <!-- In tests, this will be injected by Playwright -->
+</body>
+</html>

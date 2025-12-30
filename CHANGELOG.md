@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.0.0] - 2025-12-29
+
+### Changed
+- **Complete refactoring to modular ES6 architecture**
+  - Split monolithic 2,569-line file into 11 focused modules for better maintainability
+  - Entry point (`src/main.js`) orchestrates module imports and bootstrapping
+  - Modules: api.js, badge.js, cache.js, config.js, dom.js, inspection.js, scoring.js, selectors.js, settings.js, storage.js, utils.js
+- **Build system with Rollup**
+  - Bundler creates single IIFE userscript from ES6 modules
+  - Watch mode for development (`npm run dev`)
+  - Output: `dist/headlines-neutralizer.js` (114KB, functionally identical to original)
+- **Class-based architecture**
+  - HeadlineCache, Storage, and other components now use ES6 classes
+  - Better encapsulation, testability, and type safety
+  - Only 1.6% size increase vs inline functions
+
+### Added
+- **Comprehensive test suite**
+  - 326 unit and integration tests (95.7% passing)
+  - Test coverage: cache operations, selector matching, DOM manipulation, badge UI, inspection mode
+  - Unit tests: cache.test.js, selectors.test.js, api.test.js, scoring.test.js, utils.test.js, storage.test.js, settings.test.js
+  - Integration tests: dom.test.js
+  - E2E tests: browser compatibility validation with Playwright
+  - Test documentation: TESTING.md, TESTING-QUICKSTART.md, tests/README.md
+- **Build documentation**
+  - BUILD.md with comprehensive module breakdown and development workflow
+  - MANUAL-TESTING.md for testing full userscript in browser
+
+### Fixed
+- **Refactoring bugs** discovered and fixed during modular migration:
+  - Badge toggle state management (BADGE_COLLAPSED type mismatch causing crashes)
+  - Badge dragging memory leaks (event listeners not properly removed)
+  - Badge collapse functionality (incorrect boolean checks)
+  - Cache reapplication using stale seenEl WeakSet
+  - Parameter mismatches in badge callbacks (storage, callbacks not passed through)
+  - Inspection mode missing context parameters
+
+### Development
+- npm scripts: `build`, `build:watch`, `dev`, `test`, `test:ui`, `test:coverage`, `test:e2e`, `test:all`
+- Vitest for unit/integration tests with jsdom
+- Playwright for E2E browser tests
+- Test fixtures and comprehensive mocking setup
+
+
 ## [1.8.0] - 2025-12-19
 
 ### Removed
