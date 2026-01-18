@@ -30,7 +30,7 @@ headlines-neutralizer/
 │       ├── storage.js          # Storage abstraction
 │       └── utils.js            # Utility functions
 ├── dist/
-│   └── headlines-neutralizer.user.js  # Bundled output
+│   └── headlines-neutralizer.js       # Bundled output
 ├── tests/
 │   ├── unit/                   # Unit tests (import modules)
 │   ├── integration/            # Integration tests
@@ -87,7 +87,7 @@ const banner = readFileSync('./src/banner.txt', 'utf-8');
 export default {
   input: 'src/main.js',
   output: {
-    file: 'dist/headlines-neutralizer.user.js',
+    file: 'dist/headlines-neutralizer.js',
     format: 'iife',
     banner: banner,
     strict: true
@@ -130,7 +130,7 @@ npm run test:coverage # With coverage report
 
 The bundled file is created at:
 ```
-dist/headlines-neutralizer.user.js
+dist/headlines-neutralizer.js
 ```
 
 - **Size**: ~113KB (2,982 lines)
@@ -143,7 +143,7 @@ dist/headlines-neutralizer.user.js
 
 1. Edit modules in `src/modules/`
 2. Run `npm run build` to create the bundle
-3. Install `dist/headlines-neutralizer.user.js` in your userscript manager
+3. Install `dist/headlines-neutralizer.js` in your userscript manager
 
 ### Adding a New Module
 
@@ -160,6 +160,71 @@ npm run dev          # Terminal 1: Watch build
 npm test -- --watch  # Terminal 2: Watch tests
 ```
 
+## Releases
+
+GitHub releases are automated via `.github/workflows/release.yml`. When you push a version tag, a release is created with the built userscript attached.
+
+### Creating a Release
+
+1. Update `CHANGELOG.md` with the new version section:
+   ```markdown
+   ## [2.1.0] - 2025-01-18
+
+   ### Added
+   - New feature description
+
+   ### Fixed
+   - Bug fix description
+   ```
+
+2. Build and verify locally:
+   ```bash
+   npm run build
+   npm test
+   ```
+
+3. Commit your changes:
+   ```bash
+   git add .
+   git commit -m "Prepare release 2.1.0"
+   ```
+
+4. Create and push a version tag:
+   ```bash
+   git tag 2.1.0
+   git push origin main
+   git push origin 2.1.0
+   ```
+
+5. The workflow will automatically:
+   - Extract the changelog section for that version
+   - Create a GitHub release named `v2.1.0`
+   - Attach `dist/headlines-neutralizer.js` as a release asset
+
+### Version Tag Format
+
+Tags must follow semantic versioning without a `v` prefix:
+- `2.0.0` - correct
+- `2.1.0` - correct
+- `v2.0.0` - will not trigger the workflow
+
+### Changelog Format
+
+The release workflow extracts notes from `CHANGELOG.md`. Each version section must use this format:
+
+```markdown
+## [X.Y.Z] - YYYY-MM-DD
+
+### Added
+- Feature descriptions
+
+### Changed
+- Change descriptions
+
+### Fixed
+- Bug fix descriptions
+```
+
 ## CI/CD Integration
 
 ### GitHub Actions Example
@@ -172,10 +237,10 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: Install dependencies
         run: npm install
@@ -192,10 +257,10 @@ jobs:
         run: npm run build
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: userscript
-          path: dist/headlines-neutralizer.user.js
+          path: dist/headlines-neutralizer.js
 ```
 
 ## Troubleshooting
@@ -217,7 +282,7 @@ npm run build
 
 ### Bundled script doesn't work
 
-1. Check for syntax errors: `node -c dist/headlines-neutralizer.user.js`
+1. Check for syntax errors: `node -c dist/headlines-neutralizer.js`
 2. Check userscript header is present
 3. Verify IIFE wrapper exists at start/end
 4. Test in browser console for JavaScript errors
@@ -242,4 +307,4 @@ All functionality has been preserved. The build process creates a functionally i
 
 ---
 
-Run `npm run build` to create `dist/headlines-neutralizer.user.js` from the modular source.
+Run `npm run build` to create `dist/headlines-neutralizer.js` from the modular source.

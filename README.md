@@ -162,7 +162,7 @@ npm run test:e2e:ui  # Playwright UI
 - Utilities (text processing, DOM checks)
 
 For detailed documentation:
-- [BUILD.md](BUILD.md) - Build system and architecture
+- [BUILD.md](BUILD.md) - Build system, architecture, and releases
 - [TESTING.md](TESTING.md) - Testing guide
 - [TESTING-QUICKSTART.md](TESTING-QUICKSTART.md) - Quick start
 
