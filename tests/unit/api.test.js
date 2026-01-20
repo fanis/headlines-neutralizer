@@ -487,10 +487,12 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      const result = await rewriteBatch(mockStorage, ['Original 1', 'Original 2']);
+      const resultPromise = rewriteBatch(mockStorage, ['Original 1', 'Original 2']);
+      await vi.runAllTimersAsync();
+      const result = await resultPromise;
 
       expect(result).toEqual(['Neutral headline 1', 'Neutral headline 2']);
-    }, { timeout: 10000 });
+    });
 
     it('should handle JSON wrapped in markdown code blocks', async () => {
       const mockResponse = {
@@ -504,10 +506,12 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      const result = await rewriteBatch(mockStorage, ['Original 1', 'Original 2']);
+      const resultPromise = rewriteBatch(mockStorage, ['Original 1', 'Original 2']);
+      await vi.runAllTimersAsync();
+      const result = await resultPromise;
 
       expect(result).toEqual(['Headline 1', 'Headline 2']);
-    }, { timeout: 10000 });
+    });
 
     it('should sanitize line separator characters', async () => {
       const mockResponse = {
@@ -528,8 +532,10 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      await rewriteBatch(mockStorage, ['Test\u2028with\u2029line separators']);
-    }, { timeout: 10000 });
+      const resultPromise = rewriteBatch(mockStorage, ['Test\u2028with\u2029line separators']);
+      await vi.runAllTimersAsync();
+      await resultPromise;
+    });
 
     it('should track token usage', async () => {
       API_TOKENS.headlines = { input: 0, output: 0, calls: 0 };
@@ -545,12 +551,14 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      await rewriteBatch(mockStorage, ['Test']);
+      const resultPromise = rewriteBatch(mockStorage, ['Test']);
+      await vi.runAllTimersAsync();
+      await resultPromise;
 
       expect(API_TOKENS.headlines.input).toBe(200);
       expect(API_TOKENS.headlines.output).toBe(100);
       expect(API_TOKENS.headlines.calls).toBe(1);
-    }, { timeout: 10000 });
+    });
 
     it('should throw error when API key is missing', async () => {
       mockStorage.get.mockResolvedValue('');
@@ -568,11 +576,13 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      await expect(rewriteBatch(mockStorage, ['Test'])).rejects.toMatchObject({
+      const resultPromise = rewriteBatch(mockStorage, ['Test']);
+      await vi.runAllTimersAsync();
+      await expect(resultPromise).rejects.toMatchObject({
         message: 'No output_text/content from API',
         status: 400
       });
-    }, { timeout: 10000 });
+    });
 
     it('should throw error when response is not a JSON array', async () => {
       const mockResponse = {
@@ -586,11 +596,13 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      await expect(rewriteBatch(mockStorage, ['Test'])).rejects.toMatchObject({
+      const resultPromise = rewriteBatch(mockStorage, ['Test']);
+      await vi.runAllTimersAsync();
+      await expect(resultPromise).rejects.toMatchObject({
         message: 'API did not return a JSON array',
         status: 400
       });
-    }, { timeout: 10000 });
+    });
 
     it('should handle network errors gracefully', async () => {
       mockGM_xmlhttpRequest.mockImplementation((opts) => {
@@ -599,8 +611,10 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      await expect(rewriteBatch(mockStorage, ['Test'])).rejects.toThrow('Network failure');
-    }, { timeout: 10000 });
+      const resultPromise = rewriteBatch(mockStorage, ['Test']);
+      await vi.runAllTimersAsync();
+      await expect(resultPromise).rejects.toThrow('Network failure');
+    });
 
     it('should handle HTTP error responses', async () => {
       mockGM_xmlhttpRequest.mockImplementation((opts) => {
@@ -609,8 +623,10 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      await expect(rewriteBatch(mockStorage, ['Test'])).rejects.toThrow('HTTP 500');
-    }, { timeout: 10000 });
+      const resultPromise = rewriteBatch(mockStorage, ['Test']);
+      await vi.runAllTimersAsync();
+      await expect(resultPromise).rejects.toThrow('HTTP 500');
+    });
 
     it('should handle malformed JSON responses', async () => {
       mockGM_xmlhttpRequest.mockImplementation((opts) => {
@@ -619,8 +635,10 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      await expect(rewriteBatch(mockStorage, ['Test'])).rejects.toThrow();
-    }, { timeout: 10000 });
+      const resultPromise = rewriteBatch(mockStorage, ['Test']);
+      await vi.runAllTimersAsync();
+      await expect(resultPromise).rejects.toThrow();
+    });
 
     it('should send correct request structure', async () => {
       let capturedRequest = null;
@@ -638,7 +656,9 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      await rewriteBatch(mockStorage, ['Test headline']);
+      const resultPromise = rewriteBatch(mockStorage, ['Test headline']);
+      await vi.runAllTimersAsync();
+      await resultPromise;
 
       expect(capturedRequest.method).toBe('POST');
       expect(capturedRequest.url).toBe('https://api.openai.com/v1/responses');
@@ -651,7 +671,7 @@ describe('API Integration', () => {
       expect(body.max_output_tokens).toBe(1000);
       expect(body.instructions).toContain('neutrally');
       expect(body.input).toBe('["Test headline"]');
-    }, { timeout: 10000 });
+    });
   });
 
   describe('MODEL_OPTIONS usage', () => {

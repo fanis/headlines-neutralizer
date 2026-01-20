@@ -22,10 +22,10 @@ const createMockElement = (tag = 'div', attributes = {}, styles = {}) => {
     })
   };
 
-  // Mock getComputedStyle
+  // Mock getComputedStyle - use ?? to allow empty strings
   global.getComputedStyle = vi.fn(() => ({
-    fontSize: styles.fontSize || '16px',
-    fontWeight: styles.fontWeight || '400'
+    fontSize: styles.fontSize ?? '16px',
+    fontWeight: styles.fontWeight ?? '400'
   }));
 
   return element;
@@ -51,7 +51,7 @@ describe('Scoring Logic', () => {
       const el = createMockElement('div');
       const text = 'This is a normal headline with proper capitalization.';
 
-      expect(isLikelyKicker(el, text)).toBe(false);
+      expect(isLikelyKicker(el, text)).toBeFalsy();
     });
 
     it('should detect kicker by className', () => {
@@ -92,14 +92,14 @@ describe('Scoring Logic', () => {
       const el = createMockElement('div');
       const text = 'WORLD CUP FINAL.';
 
-      expect(isLikelyKicker(el, text)).toBe(false);
+      expect(isLikelyKicker(el, text)).toBeFalsy();
     });
 
     it('should allow longer all-caps text (> 4 words)', () => {
       const el = createMockElement('div');
       const text = 'THIS IS A LONGER ALL CAPS HEADLINE';
 
-      expect(isLikelyKicker(el, text)).toBe(false);
+      expect(isLikelyKicker(el, text)).toBeFalsy();
     });
   });
 
