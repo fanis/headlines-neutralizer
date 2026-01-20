@@ -251,9 +251,9 @@ describe('API Integration', () => {
 
       await resetPricingToDefaults(mockStorage);
 
-      expect(PRICING.inputPer1M).toBe(0.15);
-      expect(PRICING.outputPer1M).toBe(0.60);
-      expect(PRICING.model).toBe('gpt-4o-mini');
+      expect(PRICING.inputPer1M).toBe(0.20);
+      expect(PRICING.outputPer1M).toBe(0.80);
+      expect(PRICING.model).toBe('GPT-4.1 Nano Priority');
     });
   });
 
@@ -644,11 +644,174 @@ describe('API Integration', () => {
       expect(capturedRequest.url).toBe('https://api.openai.com/v1/responses');
 
       const body = JSON.parse(capturedRequest.data);
-      expect(body.model).toBe('gpt-4o-mini');
-      expect(body.temperature).toBe(0.2);
+      expect(body.model).toBe('gpt-4.1-nano');
+      expect(body.service_tier).toBe('priority');
+      expect(body.temperature).toBe(0.2); // Non-GPT-5 models use temperature
+      expect(body.reasoning).toBeUndefined(); // Only GPT-5 models use reasoning
       expect(body.max_output_tokens).toBe(1000);
       expect(body.instructions).toContain('neutrally');
       expect(body.input).toBe('["Test headline"]');
     }, { timeout: 10000 });
+  });
+
+  describe('MODEL_OPTIONS usage', () => {
+    beforeEach(() => {
+      mockStorage.get.mockResolvedValue('sk-test-key-12345');
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should use apiModel from MODEL_OPTIONS for selected model', async () => {
+      const { CFG } = await import('../../src/modules/config.js');
+      CFG.model = 'gpt-5-mini-priority';
+
+      let capturedRequest = null;
+
+      mockGM_xmlhttpRequest.mockImplementation((opts) => {
+        capturedRequest = opts;
+        setTimeout(() => {
+          opts.onload({
+            status: 200,
+            responseText: JSON.stringify({
+              output_text: '["Result"]',
+              usage: { input_tokens: 50, output_tokens: 25 }
+            })
+          });
+        }, 0);
+      });
+
+      const resultPromise = rewriteBatch(mockStorage, ['Test headline']);
+      await vi.runAllTimersAsync();
+      await resultPromise;
+
+      const body = JSON.parse(capturedRequest.data);
+      expect(body.model).toBe('gpt-5-mini');
+      expect(body.service_tier).toBe('priority');
+
+      // Reset to default
+      CFG.model = 'gpt-5-nano';
+    });
+
+    it('should not include service_tier for non-priority models', async () => {
+      const { CFG } = await import('../../src/modules/config.js');
+      CFG.model = 'gpt-5-nano';
+
+      let capturedRequest = null;
+
+      mockGM_xmlhttpRequest.mockImplementation((opts) => {
+        capturedRequest = opts;
+        setTimeout(() => {
+          opts.onload({
+            status: 200,
+            responseText: JSON.stringify({
+              output_text: '["Result"]',
+              usage: { input_tokens: 50, output_tokens: 25 }
+            })
+          });
+        }, 0);
+      });
+
+      const resultPromise = rewriteBatch(mockStorage, ['Test headline']);
+      await vi.runAllTimersAsync();
+      await resultPromise;
+
+      const body = JSON.parse(capturedRequest.data);
+      expect(body.model).toBe('gpt-5-nano');
+      expect(body.service_tier).toBeUndefined();
+    });
+
+    it('should use reasoning for GPT-5 models instead of temperature', async () => {
+      const { CFG } = await import('../../src/modules/config.js');
+      CFG.model = 'gpt-5-nano';
+
+      let capturedRequest = null;
+
+      mockGM_xmlhttpRequest.mockImplementation((opts) => {
+        capturedRequest = opts;
+        setTimeout(() => {
+          opts.onload({
+            status: 200,
+            responseText: JSON.stringify({
+              output_text: '["Result"]',
+              usage: { input_tokens: 50, output_tokens: 25 }
+            })
+          });
+        }, 0);
+      });
+
+      const resultPromise = rewriteBatch(mockStorage, ['Test headline']);
+      await vi.runAllTimersAsync();
+      await resultPromise;
+
+      const body = JSON.parse(capturedRequest.data);
+      expect(body.reasoning).toEqual({ effort: 'minimal' });
+      expect(body.temperature).toBeUndefined();
+
+      // Reset
+      CFG.model = 'gpt-4.1-nano-priority';
+    });
+
+    it('should use temperature for non-GPT-5 models', async () => {
+      const { CFG } = await import('../../src/modules/config.js');
+      CFG.model = 'gpt-4.1-nano-priority';
+
+      let capturedRequest = null;
+
+      mockGM_xmlhttpRequest.mockImplementation((opts) => {
+        capturedRequest = opts;
+        setTimeout(() => {
+          opts.onload({
+            status: 200,
+            responseText: JSON.stringify({
+              output_text: '["Result"]',
+              usage: { input_tokens: 50, output_tokens: 25 }
+            })
+          });
+        }, 0);
+      });
+
+      const resultPromise = rewriteBatch(mockStorage, ['Test headline']);
+      await vi.runAllTimersAsync();
+      await resultPromise;
+
+      const body = JSON.parse(capturedRequest.data);
+      expect(body.temperature).toBe(0.2);
+      expect(body.reasoning).toBeUndefined();
+    });
+
+    it('should fallback to gpt-4.1-nano-priority for unknown model', async () => {
+      const { CFG } = await import('../../src/modules/config.js');
+      const originalModel = CFG.model;
+      CFG.model = 'unknown-model';
+
+      let capturedRequest = null;
+
+      mockGM_xmlhttpRequest.mockImplementation((opts) => {
+        capturedRequest = opts;
+        setTimeout(() => {
+          opts.onload({
+            status: 200,
+            responseText: JSON.stringify({
+              output_text: '["Result"]',
+              usage: { input_tokens: 50, output_tokens: 25 }
+            })
+          });
+        }, 0);
+      });
+
+      const resultPromise = rewriteBatch(mockStorage, ['Test headline']);
+      await vi.runAllTimersAsync();
+      await resultPromise;
+
+      const body = JSON.parse(capturedRequest.data);
+      expect(body.model).toBe('gpt-4.1-nano');
+      expect(body.service_tier).toBe('priority');
+
+      // Reset
+      CFG.model = originalModel;
+    });
   });
 });

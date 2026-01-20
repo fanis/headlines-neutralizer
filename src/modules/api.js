@@ -2,7 +2,7 @@
  * OpenAI API integration and token tracking
  */
 
-import { CFG, STORAGE_KEYS, DEFAULT_PRICING } from './config.js';
+import { CFG, STORAGE_KEYS, DEFAULT_PRICING, MODEL_OPTIONS } from './config.js';
 import { log } from './utils.js';
 
 /**
@@ -194,13 +194,30 @@ export async function rewriteBatch(storage, texts) {
     ' If the headline contains a direct quote inside quotation marks (English "…", Greek «…»), keep that quoted text verbatim.' +
     ' Aim ≤ 110 characters when possible. Return ONLY a JSON array of strings, same order as input.';
 
-  const body = JSON.stringify({
-    model: CFG.model,
-    temperature: CFG.temperature,
+  // Get model config (apiModel and priority flag)
+  const modelConfig = MODEL_OPTIONS[CFG.model] || MODEL_OPTIONS['gpt-4.1-nano-priority'];
+  const apiModel = modelConfig.apiModel;
+
+  const bodyObj = {
+    model: apiModel,
     max_output_tokens: 1000,
     instructions,
     input: JSON.stringify(safeInputs)
-  });
+  };
+
+  // GPT-5 models are reasoning models - use minimal reasoning instead of temperature
+  if (apiModel.startsWith('gpt-5')) {
+    bodyObj.reasoning = { effort: 'minimal' };
+  } else {
+    bodyObj.temperature = CFG.temperature;
+  }
+
+  // Add service_tier for priority models
+  if (modelConfig.priority) {
+    bodyObj.service_tier = 'priority';
+  }
+
+  const body = JSON.stringify(bodyObj);
 
   const resText = await xhrPost('https://api.openai.com/v1/responses', body, apiHeaders(KEY));
   const payload = JSON.parse(resText);
@@ -211,9 +228,23 @@ export async function rewriteBatch(storage, texts) {
   }
 
   const outStr = extractOutputText(payload);
+  log('API response payload:', JSON.stringify(payload).substring(0, 500));
+  log('Extracted output:', outStr ? outStr.substring(0, 200) : 'null');
+
   if (!outStr) throw Object.assign(new Error('No output_text/content from API'), { status: 400 });
-  const cleaned = outStr.replace(/^```json\s*|\s*```$/g, '');
-  const arr = JSON.parse(cleaned);
+
+  // Strip markdown code fences if present
+  const cleaned = outStr.replace(/^```json\s*|\s*```$/g, '').trim();
+
+  // Try to parse as JSON array
+  let arr;
+  try {
+    arr = JSON.parse(cleaned);
+  } catch (e) {
+    log('JSON parse failed, raw output:', cleaned.substring(0, 300));
+    throw Object.assign(new Error(`Failed to parse API response as JSON: ${e.message}`), { status: 400 });
+  }
+
   if (!Array.isArray(arr)) throw Object.assign(new Error('API did not return a JSON array'), { status: 400 });
   return arr;
 }

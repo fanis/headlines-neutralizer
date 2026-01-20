@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.1.0] - 2026-01-20
+
+### Added
+- **AI model selection**: Choose from 5 OpenAI models via the userscript menu
+  - GPT-5 Nano - $0.05/$0.40 per 1M tokens (cheapest)
+  - GPT-5 Mini - $0.25/$2.00 per 1M tokens
+  - GPT-4.1 Nano Priority (default, recommended) - $0.20/$0.80 per 1M tokens (fast)
+  - GPT-5 Mini Priority - $0.45/$3.60 per 1M tokens (better + faster)
+  - GPT-5.2 Priority - $2.50/$20.00 per 1M tokens (premium)
+- Menu shows current model name for quick reference
+- Changing model automatically clears cache and updates pricing
+
+### Changed
+- **Default model changed from gpt-4o-mini to GPT-4.1 Nano Priority** (faster processing for headlines)
+- Default pricing updated to reflect GPT-4.1 Nano Priority rates
+- GPT-5 models use `reasoning: { effort: 'minimal' }` instead of temperature (they are reasoning models)
+
+
+## [2.0.1] - 2025-12-31
+
+### Fixed
+- Script now only runs in top-level windows to prevent unintended behavior
+
+
 ## [2.0.0] - 2025-12-29
 
 ### Changed

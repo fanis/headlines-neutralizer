@@ -2,7 +2,7 @@
  * Settings dialogs and management
  */
 
-import { UI_ATTR, CFG, TEMPERATURE_LEVELS, TEMPERATURE_ORDER, STORAGE_KEYS } from './config.js';
+import { UI_ATTR, CFG, TEMPERATURE_LEVELS, TEMPERATURE_ORDER, STORAGE_KEYS, MODEL_OPTIONS } from './config.js';
 import { parseLines, escapeHtml } from './utils.js';
 import { xhrGet } from './api.js';
 
@@ -222,7 +222,7 @@ export function openWelcomeDialog(storage, openEditor, openInfo) {
         </ol>
       </div>
       <p style="font-size:13px;color:#666;margin-top:16px"><strong>Domain control:</strong> By default, all websites are disabled. After setup, you can enable websites one by one via the menu, or toggle to "All domains with Denylist" mode to enable everywhere.</p>
-      <p style="font-size:13px;color:#666">The script uses gpt-4o-mini (cost-effective). Your key is stored locally and never shared.</p>
+      <p style="font-size:13px;color:#666">The script uses GPT-4.1 Nano Priority by default (fast processing for headlines). You can change the model anytime via the menu. Your key is stored locally and never shared.</p>
       <div class="actions">
         <button class="btn secondary cancel">Maybe Later</button>
         <button class="btn primary continue">Set Up API Key</button>
@@ -338,6 +338,106 @@ export function openTemperatureDialog(storage, TEMPERATURE_LEVEL, setTemperature
 }
 
 /**
+ * Show model selection dialog
+ */
+export function openModelSelectionDialog(storage, currentModel, onSelect) {
+  const host = document.createElement('div');
+  host.setAttribute(UI_ATTR, '');
+  const shadow = host.attachShadow({ mode: 'open' });
+  const style = document.createElement('style');
+  style.textContent = `
+    .wrap{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.5);
+          display:flex;align-items:center;justify-content:center}
+    .modal{background:#fff;max-width:600px;width:90%;border-radius:12px;
+           box-shadow:0 10px 40px rgba(0,0,0,.3);padding:24px;box-sizing:border-box}
+    h3{margin:0 0 8px;font:600 18px/1.2 system-ui,sans-serif;color:#1a1a1a}
+    .subtitle{margin:0 0 20px;font:13px/1.4 system-ui,sans-serif;color:#666}
+    .option{padding:16px;margin:10px 0;border:2px solid #e0e0e0;border-radius:8px;
+            cursor:pointer;transition:all 0.2s;position:relative}
+    .option:hover{border-color:#1a73e8;background:#f8f9ff}
+    .option.selected{border-color:#1a73e8;background:#1a73e8;color:#fff}
+    .option-header{display:flex;justify-content:space-between;align-items:start;margin-bottom:8px}
+    .option-title{font:600 16px/1.2 system-ui,sans-serif}
+    .option-badge{font:600 10px/1.2 system-ui,sans-serif;padding:4px 8px;
+                  border-radius:4px;background:#34a853;color:#fff;text-transform:uppercase}
+    .option.selected .option-badge{background:rgba(255,255,255,0.3)}
+    .option-desc{font:13px/1.5 system-ui,sans-serif;opacity:0.85;margin-bottom:8px}
+    .option-pricing{font:12px/1.3 system-ui,sans-serif;opacity:0.7;font-family:ui-monospace,monospace}
+    .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+    .btn{padding:10px 20px;border-radius:8px;border:none;cursor:pointer;
+         font:600 14px system-ui,sans-serif}
+    .btn-save{background:#1a73e8;color:#fff}
+    .btn-save:hover{background:#1557b0}
+    .btn-cancel{background:#e0e0e0;color:#333}
+    .btn-cancel:hover{background:#d0d0d0}
+  `;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'wrap';
+
+  const optionsHtml = Object.keys(MODEL_OPTIONS).map(modelId => {
+    const model = MODEL_OPTIONS[modelId];
+    const isSelected = modelId === currentModel;
+    const badge = model.recommended ? '<span class="option-badge">Recommended</span>' : '';
+    return `
+      <div class="option ${isSelected ? 'selected' : ''}" data-model="${modelId}">
+        <div class="option-header">
+          <div class="option-title">${model.name}</div>
+          ${badge}
+        </div>
+        <div class="option-desc">${model.description}</div>
+        <div class="option-pricing">$${model.inputPer1M.toFixed(2)}/1M input - $${model.outputPer1M.toFixed(2)}/1M output</div>
+      </div>
+    `;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="modal">
+      <h3>AI Model Selection</h3>
+      <p class="subtitle">Choose the OpenAI model for headline neutralization. Higher-tier models cost more but may produce better results.</p>
+      ${optionsHtml}
+      <div class="actions">
+        <button class="btn btn-cancel">Cancel</button>
+        <button class="btn btn-save">Save & Reload</button>
+      </div>
+    </div>
+  `;
+  shadow.append(style, wrap);
+  document.body.appendChild(host);
+
+  let selectedModel = currentModel;
+
+  const options = shadow.querySelectorAll('.option');
+  options.forEach(opt => {
+    opt.addEventListener('click', () => {
+      options.forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+      selectedModel = opt.dataset.model;
+    });
+  });
+
+  const btnSave = shadow.querySelector('.btn-save');
+  const btnCancel = shadow.querySelector('.btn-cancel');
+
+  const close = () => host.remove();
+
+  btnSave.addEventListener('click', async () => {
+    if (!MODEL_OPTIONS[selectedModel]) return;
+    await onSelect(selectedModel);
+    btnSave.textContent = 'Saved! Reloading...';
+    btnSave.style.background = '#34a853';
+    setTimeout(() => location.reload(), 800);
+  });
+
+  btnCancel.addEventListener('click', close);
+  wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+  shadow.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+
+  wrap.setAttribute('tabindex', '-1');
+  wrap.focus();
+}
+
+/**
  * Show API pricing configuration dialog
  */
 export function openPricingDialog(storage, PRICING, updatePricing, resetPricingToDefaults, openInfo) {
@@ -427,9 +527,9 @@ export function openPricingDialog(storage, PRICING, updatePricing, resetPricingT
   });
 
   btnReset.addEventListener('click', async () => {
-    if (confirm('Reset pricing to gpt-4o-mini defaults ($0.15 input, $0.60 output per 1M tokens)?')) {
+    if (confirm('Reset pricing to GPT-4.1 Nano Priority defaults ($0.20 input, $0.80 output per 1M tokens)?')) {
       await resetPricingToDefaults(storage);
-      openInfo('Pricing reset to defaults (gpt-4o-mini: $0.15 input, $0.60 output per 1M tokens)');
+      openInfo('Pricing reset to defaults (GPT-4.1 Nano Priority: $0.20 input, $0.80 output per 1M tokens)');
       close();
     }
   });

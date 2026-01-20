@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      1.8.0
+// @version      2.1.0
 // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -28,19 +28,24 @@
 // or offering as a service without a separate commercial license from the author.
 // Full text: https://polyformproject.org/licenses/internal-use/1.0.0/
 
-import { CFG, UI_ATTR, TEMPERATURE_LEVELS, TEMPERATURE_ORDER, STORAGE_KEYS, DEFAULT_SELECTORS, DEFAULT_EXCLUDES, CARD_SELECTOR } from './modules/config.js';
+import { CFG, UI_ATTR, TEMPERATURE_LEVELS, TEMPERATURE_ORDER, STORAGE_KEYS, DEFAULT_SELECTORS, DEFAULT_EXCLUDES, CARD_SELECTOR, MODEL_OPTIONS } from './modules/config.js';
 import { log, textTrim, withinLen, isInViewportWithMargin, escapeHtml } from './modules/utils.js';
 import { Storage } from './modules/storage.js';
 import { HeadlineCache } from './modules/cache.js';
 import { domainPatternToRegex, listMatchesHost, compiledSelectors } from './modules/selectors.js';
 import { initApiTracking, rewriteBatch, resetApiTokens, updatePricing, resetPricingToDefaults, calculateApiCost, API_TOKENS, PRICING } from './modules/api.js';
 import { ensureHighlightCSS, isExcluded, findTextHost, getCandidateElements, applyRewrites, restoreOriginals } from './modules/dom.js';
-import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openTemperatureDialog, openPricingDialog, showLongHeadlineDialog, showDiffAudit } from './modules/settings.js';
+import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openTemperatureDialog, openModelSelectionDialog, openPricingDialog, showLongHeadlineDialog, showDiffAudit } from './modules/settings.js';
 import { ensureBadge, updateBadgeCounts, reapplyFromCache } from './modules/badge.js';
 import { enterInspectionMode } from './modules/inspection.js';
 
 (async () => {
   'use strict';
+  
+  // Only run in top-level window, not in iframes
+  if (window.self !== window.top) {
+      return;
+  }  
 
   const HOST = location.hostname;
   const storage = new Storage();
@@ -79,6 +84,14 @@ import { enterInspectionMode } from './modules/inspection.js';
     }
   } catch {}
 
+  // Load model setting
+  try {
+    const v = await storage.get(STORAGE_KEYS.MODEL, '');
+    if (v !== '' && MODEL_OPTIONS[v]) {
+      CFG.model = v;
+    }
+  } catch {}
+
   // Settings functions
   async function setDebug(on) { CFG.DEBUG = !!on; await storage.set(STORAGE_KEYS.DEBUG, String(CFG.DEBUG)); location.reload(); }
   async function setAutoDetect(on) { CFG.autoDetect = !!on; await storage.set(STORAGE_KEYS.AUTO_DETECT, String(CFG.autoDetect)); location.reload(); }
@@ -89,6 +102,20 @@ import { enterInspectionMode } from './modules/inspection.js';
     CFG.temperature = TEMPERATURE_LEVELS[level];
     await storage.set(STORAGE_KEYS.TEMPERATURE, level);
     location.reload();
+  }
+  async function setModel(modelId) {
+    if (!MODEL_OPTIONS[modelId]) return;
+    CFG.model = modelId;
+    await storage.set(STORAGE_KEYS.MODEL, modelId);
+    // Update pricing to match selected model
+    const modelConfig = MODEL_OPTIONS[modelId];
+    await updatePricing(storage, {
+      model: modelConfig.name,
+      inputPer1M: modelConfig.inputPer1M,
+      outputPer1M: modelConfig.outputPer1M
+    });
+    // Clear cache when model changes
+    await cache.clear();
   }
 
   // Domain mode + lists
@@ -299,6 +326,7 @@ import { enterInspectionMode } from './modules/inspection.js';
       }
     });
   });
+  GM_registerMenuCommand?.(`AI model (${MODEL_OPTIONS[CFG.model]?.name || CFG.model})`, () => openModelSelectionDialog(storage, CFG.model, setModel));
   GM_registerMenuCommand?.('Configure API pricing', () => openPricingDialog(storage, PRICING, updatePricing, resetPricingToDefaults, openInfo));
 
   GM_registerMenuCommand?.('Edit GLOBAL target selectors', () => {

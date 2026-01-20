@@ -1,6 +1,6 @@
 # Neutralize Headlines Userscript - Setup & Usage Guide
 
-> **Latest Version**: 2.0.0 | [See What's New](CHANGELOG.md)
+> **Latest Version**: 2.1.0 | [See What's New](CHANGELOG.md)
 
 ## Table of Contents
 - [What It Does](#what-it-does)
@@ -48,6 +48,8 @@
   OpenAI's API. It tones down dramatic language while preserving factual content, making your browsing experience
   calmer and more informative.
 
+  **New in 2.1.0:** AI model selection - choose from 5 OpenAI models. Default changed to GPT-4.1 Nano Priority for fast headline processing.
+
   **New in 2.0.0:** Complete architectural refactoring with modular ES6 code, comprehensive test suite (326 tests, 95.7% passing), class-based architecture for better maintainability, and build system using Rollup. Functionally identical to 1.8.0 for end users.
 
   **From 1.8.0:** Streamlined to focus solely on headline neutralization. Body text simplification has been removed.
@@ -56,6 +58,7 @@
 
 ##  Features:
   - Automatic headline detection using smart heuristics
+  - **AI model selection** - Choose from 5 OpenAI models with different price/quality tradeoffs
   - Adjustable neutralization strength (5 levels from Minimal to Maximum)
   - **Element Inspection Mode** - Diagnostic tool to troubleshoot why elements are/aren't being processed
   - Global + per-domain CSS selector configuration
@@ -79,7 +82,7 @@
 2. OpenAI API key
 - Sign up at https://platform.openai.com/
 - Generate an API key from your account settings
-- The script uses the gpt-4o-mini model (cost-effective)
+- The script uses GPT-4.1 Nano Priority by default (fast processing for headlines)
 
   ---
 ## Installation
@@ -223,10 +226,17 @@ For detailed documentation:
 ###  Configuration
 
   - **Set / Validate OpenAI API key** - Add or test your API key
+  - **AI model (GPT-4.1 Nano Priority)** - Select from 5 OpenAI models with different price/quality tradeoffs
+    - GPT-5 Nano - $0.05/$0.40 per 1M tokens (cheapest)
+    - GPT-5 Mini - $0.25/$2.00 per 1M tokens
+    - GPT-4.1 Nano Priority (recommended) - $0.20/$0.80 per 1M tokens (fast)
+    - GPT-5 Mini Priority - $0.45/$3.60 per 1M tokens (better + faster)
+    - GPT-5.2 Priority - $2.50/$20.00 per 1M tokens (premium quality)
+    - Note: GPT-5 models are reasoning models and use minimal reasoning instead of temperature
   - **Configure API pricing** - Set or update pricing for cost calculations
     - Update input/output token costs when OpenAI changes pricing
     - Shows current model, pricing, last updated date, and source link
-    - Reset to defaults button (gpt-4o-mini: $0.15/$0.60 per 1M tokens)
+    - Reset to defaults button (GPT-4.1 Nano Priority: $0.20/$0.80 per 1M tokens)
     - Cost calculations in stats dialog use these values
 
   **Global Settings** (apply to all domains):
@@ -451,10 +461,7 @@ For detailed documentation:
 
 ###  Change AI Model
 
-  Edit line 28 in the script:
-```
-model: 'gpt-4o-mini',  // Change to 'gpt-4o' for better quality
-```
+  Use the userscript menu: **AI model (current model name)** to select from 5 available models. The menu shows current model and opens a selection dialog with pricing information. Changing models clears the cache and updates pricing automatically.
 
 ###  Adjust Batch Size
 
