@@ -1,4 +1,5 @@
 /.claude/
+!.claude/skills/*
 
 # Dependencies
 node_modules/
