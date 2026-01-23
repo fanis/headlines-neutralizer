@@ -7,7 +7,6 @@ import {
   resetApiTokens,
   calculateApiCost,
   updatePricing,
-  resetPricingToDefaults,
   apiHeaders,
   xhrPost,
   xhrGet,
@@ -241,19 +240,6 @@ describe('API Integration', () => {
         'neutralizer_pricing_v1',
         expect.stringContaining('"inputPer1M":0.25')
       );
-    });
-  });
-
-  describe('resetPricingToDefaults', () => {
-    it('should reset pricing to default values', async () => {
-      PRICING.inputPer1M = 0.99;
-      PRICING.outputPer1M = 1.99;
-
-      await resetPricingToDefaults(mockStorage);
-
-      expect(PRICING.inputPer1M).toBe(0.20);
-      expect(PRICING.outputPer1M).toBe(0.80);
-      expect(PRICING.model).toBe('GPT-4.1 Nano Priority');
     });
   });
 

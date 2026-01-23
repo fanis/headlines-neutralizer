@@ -94,15 +94,6 @@ export async function updatePricing(storage, newPricing) {
 }
 
 /**
- * Reset pricing to defaults
- */
-export async function resetPricingToDefaults(storage) {
-  PRICING = { ...DEFAULT_PRICING };
-  await storage.set(STORAGE_KEYS.PRICING, JSON.stringify(PRICING));
-  log('Pricing reset to defaults');
-}
-
-/**
  * API request headers
  */
 export function apiHeaders(key) {

@@ -73,8 +73,8 @@ describe('Config', () => {
   describe('DEFAULT_PRICING', () => {
     it('should use GPT-4.1 Nano Priority pricing by default', () => {
       expect(DEFAULT_PRICING.model).toBe('GPT-4.1 Nano Priority');
-      expect(DEFAULT_PRICING.inputPer1M).toBe(0.20);
-      expect(DEFAULT_PRICING.outputPer1M).toBe(0.80);
+      expect(DEFAULT_PRICING.inputPer1M).toBe(0.10);
+      expect(DEFAULT_PRICING.outputPer1M).toBe(0.40);
     });
   });
 });
