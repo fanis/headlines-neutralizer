@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      2.1.0
+// @version      2.2.0
 // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -33,9 +33,9 @@ import { log, textTrim, withinLen, isInViewportWithMargin, escapeHtml } from './
 import { Storage } from './modules/storage.js';
 import { HeadlineCache } from './modules/cache.js';
 import { domainPatternToRegex, listMatchesHost, compiledSelectors } from './modules/selectors.js';
-import { initApiTracking, rewriteBatch, resetApiTokens, updatePricing, resetPricingToDefaults, calculateApiCost, API_TOKENS, PRICING } from './modules/api.js';
+import { initApiTracking, rewriteBatch, resetApiTokens, updatePricing, calculateApiCost, API_TOKENS, PRICING } from './modules/api.js';
 import { ensureHighlightCSS, isExcluded, findTextHost, getCandidateElements, applyRewrites, restoreOriginals } from './modules/dom.js';
-import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openTemperatureDialog, openModelSelectionDialog, openPricingDialog, showLongHeadlineDialog, showDiffAudit } from './modules/settings.js';
+import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openTemperatureDialog, openModelSelectionDialog, showLongHeadlineDialog, showDiffAudit } from './modules/settings.js';
 import { ensureBadge, updateBadgeCounts, reapplyFromCache } from './modules/badge.js';
 import { enterInspectionMode } from './modules/inspection.js';
 
@@ -327,7 +327,6 @@ import { enterInspectionMode } from './modules/inspection.js';
     });
   });
   GM_registerMenuCommand?.(`AI model (${MODEL_OPTIONS[CFG.model]?.name || CFG.model})`, () => openModelSelectionDialog(storage, CFG.model, setModel));
-  GM_registerMenuCommand?.('Configure API pricing', () => openPricingDialog(storage, PRICING, updatePricing, resetPricingToDefaults, openInfo));
 
   GM_registerMenuCommand?.('Edit GLOBAL target selectors', () => {
     openEditor({

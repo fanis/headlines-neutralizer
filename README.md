@@ -229,15 +229,11 @@ For detailed documentation:
   - **AI model (GPT-4.1 Nano Priority)** - Select from 5 OpenAI models with different price/quality tradeoffs
     - GPT-5 Nano - $0.05/$0.40 per 1M tokens (cheapest)
     - GPT-5 Mini - $0.25/$2.00 per 1M tokens
-    - GPT-4.1 Nano Priority (recommended) - $0.20/$0.80 per 1M tokens (fast)
-    - GPT-5 Mini Priority - $0.45/$3.60 per 1M tokens (better + faster)
-    - GPT-5.2 Priority - $2.50/$20.00 per 1M tokens (premium quality)
+    - GPT-4.1 Nano Priority (recommended) - $0.10/$0.40 per 1M tokens (fast)
+    - GPT-5 Mini Priority - $0.25/$2.00 per 1M tokens (better + faster)
+    - GPT-5.2 Priority - $1.75/$14.00 per 1M tokens (premium quality)
     - Note: GPT-5 models are reasoning models and use minimal reasoning instead of temperature
-  - **Configure API pricing** - Set or update pricing for cost calculations
-    - Update input/output token costs when OpenAI changes pricing
-    - Shows current model, pricing, last updated date, and source link
-    - Reset to defaults button (GPT-4.1 Nano Priority: $0.20/$0.80 per 1M tokens)
-    - Cost calculations in stats dialog use these values
+    - Pricing is automatically updated when you change models
 
   **Global Settings** (apply to all domains):
   - **Edit GLOBAL target selectors** - Base CSS selectors for all websites
@@ -283,7 +279,7 @@ For detailed documentation:
   - **Show stats & changes (diff audit)** - View cache statistics and all changes
     - **API Usage & Cost** - Real-time tracking with actual token counts from OpenAI
       - Total input/output tokens and costs since installation
-      - Based on current pricing configuration (see "Configure API pricing")
+      - Pricing based on selected AI model
       - API stats persist and are independent from clearable page stats
     - Displays headline cache size
     - Shows all original → neutralized headline changes on current page
@@ -500,8 +496,7 @@ topKPerCard: 1,      // Increase to 2-3 for multiple headlines per card
   4. Check the stats dialog - Monitor API usage and costs, verify neutralizations, and track cache efficiency
   5. Use allowlist mode for sensitive sites - Avoid false positives
   6. Keep cache enabled - Dramatically reduces API costs on revisits
-  7. Configure pricing - Update API pricing in settings when OpenAI changes rates for accurate cost tracking
-  8. Toggle badge OFF for clean UI - Access controls via menu instead
+  7. Toggle badge OFF for clean UI - Access controls via menu instead
 
   ---
 

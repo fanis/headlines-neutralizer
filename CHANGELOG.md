@@ -6,15 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.2.0] - 2026-01-23
+
+### Changed
+- **Updated AI model pricing** to match current OpenAI rates (verified January 2026)
+- Pricing now automatically syncs when changing models
+
+### Removed
+- **Removed "Configure API pricing" menu option** - Manual pricing configuration is no longer needed since pricing is bundled with model selection
+
+
 ## [2.1.0] - 2026-01-20
 
 ### Added
 - **AI model selection**: Choose from 5 OpenAI models via the userscript menu
   - GPT-5 Nano - $0.05/$0.40 per 1M tokens (cheapest)
   - GPT-5 Mini - $0.25/$2.00 per 1M tokens
-  - GPT-4.1 Nano Priority (default, recommended) - $0.20/$0.80 per 1M tokens (fast)
-  - GPT-5 Mini Priority - $0.45/$3.60 per 1M tokens (better + faster)
-  - GPT-5.2 Priority - $2.50/$20.00 per 1M tokens (premium)
+  - GPT-4.1 Nano Priority (default, recommended) - $0.10/$0.40 per 1M tokens (fast)
+  - GPT-5 Mini Priority - $0.25/$2.00 per 1M tokens (better + faster)
+  - GPT-5.2 Priority - $1.75/$14.00 per 1M tokens (premium)
 - Menu shows current model name for quick reference
 - Changing model automatically clears cache and updates pricing
 

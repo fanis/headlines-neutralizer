@@ -40,7 +40,8 @@ export const CFG = {
 export const UI_ATTR = 'data-neutralizer-ui';
 
 // Available models with pricing
-// Pricing source: https://openai.com/api/pricing/ (as of 2025-01-20)
+// Pricing source: https://openai.com/api/pricing/ (verified 2026-01)
+// Note: Priority tier (service_tier: 'priority') provides faster processing at no additional cost
 export const MODEL_OPTIONS = {
   'gpt-5-nano': {
     name: 'GPT-5 Nano',
@@ -64,8 +65,8 @@ export const MODEL_OPTIONS = {
     name: 'GPT-4.1 Nano Priority',
     apiModel: 'gpt-4.1-nano',
     description: 'Fast processing, affordable - Best for headlines',
-    inputPer1M: 0.20,
-    outputPer1M: 0.80,
+    inputPer1M: 0.10,
+    outputPer1M: 0.40,
     recommended: true,
     priority: true
   },
@@ -73,8 +74,8 @@ export const MODEL_OPTIONS = {
     name: 'GPT-5 Mini Priority',
     apiModel: 'gpt-5-mini',
     description: 'Better quality + faster processing',
-    inputPer1M: 0.45,
-    outputPer1M: 3.60,
+    inputPer1M: 0.25,
+    outputPer1M: 2.00,
     recommended: false,
     priority: true
   },
@@ -82,8 +83,8 @@ export const MODEL_OPTIONS = {
     name: 'GPT-5.2 Priority',
     apiModel: 'gpt-5.2',
     description: 'Premium quality + fastest processing (most expensive)',
-    inputPer1M: 2.50,
-    outputPer1M: 20.00,
+    inputPer1M: 1.75,
+    outputPer1M: 14.00,
     recommended: false,
     priority: true
   }
@@ -138,12 +139,12 @@ export const DEFAULT_EXCLUDES = {
   ancestors: ['footer', 'nav', 'aside', '[role="navigation"]', '.breadcrumbs', '[aria-label*="breadcrumb" i]']
 };
 
-// Default API pricing (gpt-4.1-nano-priority as of January 2025)
+// Default API pricing (gpt-4.1-nano-priority, verified January 2026)
 export const DEFAULT_PRICING = {
   model: 'GPT-4.1 Nano Priority',
-  inputPer1M: 0.20,    // USD per 1M input tokens
-  outputPer1M: 0.80,   // USD per 1M output tokens
-  lastUpdated: '2025-01-20',
+  inputPer1M: 0.10,    // USD per 1M input tokens
+  outputPer1M: 0.40,   // USD per 1M output tokens
+  lastUpdated: '2026-01-23',
   source: 'https://openai.com/api/pricing/'
 };
 
