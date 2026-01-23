@@ -40,7 +40,7 @@ export const CFG = {
 export const UI_ATTR = 'data-neutralizer-ui';
 
 // Available models with pricing
-// Pricing source: https://openai.com/api/pricing/ (as of 2025-08)
+// Pricing source: https://openai.com/api/pricing/ (verified 2026-01)
 // Note: Priority tier (service_tier: 'priority') provides faster processing at no additional cost
 export const MODEL_OPTIONS = {
   'gpt-5-nano': {
@@ -139,12 +139,12 @@ export const DEFAULT_EXCLUDES = {
   ancestors: ['footer', 'nav', 'aside', '[role="navigation"]', '.breadcrumbs', '[aria-label*="breadcrumb" i]']
 };
 
-// Default API pricing (gpt-4.1-nano-priority as of August 2025)
+// Default API pricing (gpt-4.1-nano-priority, verified January 2026)
 export const DEFAULT_PRICING = {
   model: 'GPT-4.1 Nano Priority',
   inputPer1M: 0.10,    // USD per 1M input tokens
   outputPer1M: 0.40,   // USD per 1M output tokens
-  lastUpdated: '2025-08-01',
+  lastUpdated: '2026-01-23',
   source: 'https://openai.com/api/pricing/'
 };
 

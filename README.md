@@ -229,14 +229,14 @@ For detailed documentation:
   - **AI model (GPT-4.1 Nano Priority)** - Select from 5 OpenAI models with different price/quality tradeoffs
     - GPT-5 Nano - $0.05/$0.40 per 1M tokens (cheapest)
     - GPT-5 Mini - $0.25/$2.00 per 1M tokens
-    - GPT-4.1 Nano Priority (recommended) - $0.20/$0.80 per 1M tokens (fast)
-    - GPT-5 Mini Priority - $0.45/$3.60 per 1M tokens (better + faster)
-    - GPT-5.2 Priority - $2.50/$20.00 per 1M tokens (premium quality)
+    - GPT-4.1 Nano Priority (recommended) - $0.10/$0.40 per 1M tokens (fast)
+    - GPT-5 Mini Priority - $0.25/$2.00 per 1M tokens (better + faster)
+    - GPT-5.2 Priority - $1.75/$14.00 per 1M tokens (premium quality)
     - Note: GPT-5 models are reasoning models and use minimal reasoning instead of temperature
   - **Configure API pricing** - Set or update pricing for cost calculations
     - Update input/output token costs when OpenAI changes pricing
     - Shows current model, pricing, last updated date, and source link
-    - Reset to defaults button (GPT-4.1 Nano Priority: $0.20/$0.80 per 1M tokens)
+    - Reset to defaults button (GPT-4.1 Nano Priority: $0.10/$0.40 per 1M tokens)
     - Cost calculations in stats dialog use these values
 
   **Global Settings** (apply to all domains):
