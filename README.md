@@ -1,6 +1,6 @@
 # Neutralize Headlines Userscript - Setup & Usage Guide
 
-> **Latest Version**: 2.1.0 | [See What's New](CHANGELOG.md)
+> **Latest Version**: 2.2.0 | [See What's New](CHANGELOG.md)
 
 ## Table of Contents
 - [What It Does](#what-it-does)
@@ -48,9 +48,11 @@
   OpenAI's API. It tones down dramatic language while preserving factual content, making your browsing experience
   calmer and more informative.
 
-  **New in 2.1.0:** AI model selection - choose from 5 OpenAI models. Default changed to GPT-4.1 Nano Priority for fast headline processing.
+  **New in 2.2.0:** Updated AI model pricing to current OpenAI rates. Removed manual pricing configuration - pricing now syncs automatically with model selection.
 
-  **New in 2.0.0:** Complete architectural refactoring with modular ES6 code, comprehensive test suite (326 tests, 95.7% passing), class-based architecture for better maintainability, and build system using Rollup. Functionally identical to 1.8.0 for end users.
+  **From 2.1.0:** AI model selection - choose from 5 OpenAI models. Default changed to GPT-4.1 Nano Priority for fast headline processing.
+
+  **From 2.0.0:** Complete architectural refactoring with modular ES6 code, comprehensive test suite (326 tests, 95.7% passing), class-based architecture for better maintainability, and build system using Rollup. Functionally identical to 1.8.0 for end users.
 
   **From 1.8.0:** Streamlined to focus solely on headline neutralization. Body text simplification has been removed.
 
