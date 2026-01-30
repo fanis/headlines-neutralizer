@@ -177,7 +177,12 @@ export async function rewriteBatch(storage, texts) {
     throw Object.assign(new Error('API key missing'), { status: 401 });
   }
 
-  const safeInputs = texts.map(t => t.replace(/[\u2028\u2029]/g, ' '));
+  const safeInputs = texts.map(t =>
+    t.replace(/[\u2028\u2029]/g, ' ')
+     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')       // strip C0 control chars (keep \t \n \r)
+     .replace(/[\uFFF0-\uFFFF]/g, '')                           // strip specials block
+     .replace(/[\u200B-\u200F\u2060\uFEFF]/g, '')               // strip zero-width / BOM
+  );
   const instructions =
     'You will receive INPUT as a JSON array of headlines.' +
     ' Rewrite each headline neutrally in the SAME language as input.' +

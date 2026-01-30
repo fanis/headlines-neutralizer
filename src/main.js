@@ -233,9 +233,12 @@ import { enterInspectionMode } from './modules/inspection.js';
     if (pending.size) scheduleFlush();
   }
 
+  const shownErrors = new Set();
   function friendlyApiError(err) {
     const s = err?.status || 0;
     if (s === 401) { openKeyDialog(storage, 'Unauthorized (401). Please enter a valid OpenAI key.', apiKeyDialogShown); return; }
+    if (shownErrors.has(s)) return;          // show each error type at most once per page load
+    shownErrors.add(s);
     if (s === 429) { openInfo('Rate limited by API (429). Try again in a minute. You can also lower maxBatch or enable visible-only to reduce burst.'); return; }
     if (s === 400) { openInfo('Bad request (400). The page may contain text the API could not parse. Try again, or disable auto-detect for this site and use narrower selectors.'); return; }
     openInfo(`Unknown error${s ? ' (' + s + ')' : ''}. Check your network or try again.`);

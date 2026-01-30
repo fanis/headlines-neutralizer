@@ -768,7 +768,12 @@
       throw Object.assign(new Error('API key missing'), { status: 401 });
     }
 
-    const safeInputs = texts.map(t => t.replace(/[\u2028\u2029]/g, ' '));
+    const safeInputs = texts.map(t =>
+      t.replace(/[\u2028\u2029]/g, ' ')
+       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')       // strip C0 control chars (keep \t \n \r)
+       .replace(/[\uFFF0-\uFFFF]/g, '')                           // strip specials block
+       .replace(/[\u200B-\u200F\u2060\uFEFF]/g, '')               // strip zero-width / BOM
+    );
     const instructions =
       'You will receive INPUT as a JSON array of headlines.' +
       ' Rewrite each headline neutrally in the SAME language as input.' +
@@ -2826,9 +2831,12 @@
       if (pending.size) scheduleFlush();
     }
 
+    const shownErrors = new Set();
     function friendlyApiError(err) {
       const s = err?.status || 0;
       if (s === 401) { openKeyDialog(storage, 'Unauthorized (401). Please enter a valid OpenAI key.', apiKeyDialogShown); return; }
+      if (shownErrors.has(s)) return;          // show each error type at most once per page load
+      shownErrors.add(s);
       if (s === 429) { openInfo('Rate limited by API (429). Try again in a minute. You can also lower maxBatch or enable visible-only to reduce burst.'); return; }
       if (s === 400) { openInfo('Bad request (400). The page may contain text the API could not parse. Try again, or disable auto-detect for this site and use narrower selectors.'); return; }
       openInfo(`Unknown error${s ? ' (' + s + ')' : ''}. Check your network or try again.`);
