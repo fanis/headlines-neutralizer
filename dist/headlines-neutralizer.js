@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      2.2.0
+// @version      2.3.0
 // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -975,10 +975,10 @@
       box-sizing: border-box !important; width: max-content !important; min-width: 120px !important;
       margin: 0 !important; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
       user-select: none !important; }
-    .neutralizer-badge.collapsed { right: 0 !important; left: auto !important;
+    .neutralizer-badge.neutralizer-collapsed { right: 0 !important; left: auto !important;
       transform: translateX(100%) !important; border-right: none !important;
       border-radius: 10px 0 0 10px !important; box-shadow: -4px 0 22px rgba(0,0,0,.18) !important; }
-    .neutralizer-badge.dragging { transition: none !important; cursor: grabbing !important; }
+    .neutralizer-badge.neutralizer-dragging { transition: none !important; cursor: grabbing !important; }
     .neutralizer-badge .badge-handle { position: absolute !important; left: -28px !important; top: 50% !important;
       transform: translateY(-50%) !important; width: 28px !important; height: 56px !important;
       background: linear-gradient(90deg, #d4f8e8 0%, #c9f6e1 100%) !important; border: 1px solid #79d4b0 !important; border-right: none !important;
@@ -996,17 +996,17 @@
     .neutralizer-badge .badge-content { display: flex !important; flex-direction: column !important;
       gap: 6px !important; padding: 8px 10px !important; }
     .neutralizer-badge * { box-sizing: border-box !important; }
-    .neutralizer-badge .row { display: flex !important; gap: 8px !important; align-items: center !important;
+    .neutralizer-badge .neutralizer-row { display: flex !important; gap: 8px !important; align-items: center !important;
       justify-content: center !important; margin: 0 !important; padding: 0 !important; width: 100%; }
-    .neutralizer-badge .btn { cursor: pointer !important; padding: 6px 10px !important; border-radius: 8px !important;
+    .neutralizer-badge .neutralizer-btn { cursor: pointer !important; padding: 6px 10px !important; border-radius: 8px !important;
       border: 1px solid #79d4b0 !important; background: #fff !important; box-sizing: border-box !important;
       white-space: nowrap !important; font-family: system-ui, sans-serif !important;
       font-size: 12px !important; line-height: 1.2 !important; color: #0b3d2c !important;
       margin: 0 !important; min-width: 0 !important; width: auto !important; }
-    .neutralizer-badge .btn.primary { background: #0b3d2c !important; color: #fff !important;
+    .neutralizer-badge .neutralizer-btn.neutralizer-primary { background: #0b3d2c !important; color: #fff !important;
       border-color: #0b3d2c !important; }
-    .neutralizer-badge .btn:disabled { opacity: 0.6 !important; cursor: not-allowed !important; }
-    .neutralizer-badge .small { font-size: 11px !important; opacity: .9 !important; }
+    .neutralizer-badge .neutralizer-btn:disabled { opacity: 0.6 !important; cursor: not-allowed !important; }
+    .neutralizer-badge .neutralizer-small { font-size: 11px !important; opacity: .9 !important; }
   `;
     document.head.appendChild(style);
   }
@@ -1828,7 +1828,7 @@
   let badge = null;
   let badgeState = 'calmed'; // 'calmed' or 'originals'
   let isBadgeDragging = false;
-  let badgeDragOffset = { x: 0, y: 0 };
+  let badgeDragOffsetY = 0;
   let boundOnBadgeDrag = null;
   let boundStopBadgeDrag = null;
 
@@ -1842,7 +1842,7 @@
 
     badge = document.createElement('div');
     badge.className = 'neutralizer-badge';
-    if (BADGE_COLLAPSED.value) badge.classList.add('collapsed');
+    if (BADGE_COLLAPSED.value) badge.classList.add('neutralizer-collapsed');
     badge.setAttribute(UI_ATTR, '');
 
     const maxY = window.innerHeight - 200;
@@ -1855,11 +1855,11 @@
     <div class="badge-handle" title="${BADGE_COLLAPSED.value ? 'Open' : 'Close'}">${BADGE_COLLAPSED.value ? '◀' : '▶'}</div>
     <div class="badge-header">NEUTRALIZE HEADLINES</div>
     <div class="badge-content">
-      <div class="row">
-        <button class="btn primary action">H: neutral</button>
+      <div class="neutralizer-row">
+        <button class="neutralizer-btn neutralizer-primary neutralizer-action">H: neutral</button>
       </div>
-      <div class="row">
-        <button class="btn inspect">Inspect</button>
+      <div class="neutralizer-row">
+        <button class="neutralizer-btn neutralizer-inspect">Inspect</button>
       </div>
     </div>
   `;
@@ -1871,8 +1871,8 @@
     header.addEventListener('mousedown', (e) => startBadgeDrag(e, BADGE_COLLAPSED, BADGE_POS, storage));
     handle.addEventListener('click', () => toggleBadgeCollapse(storage, BADGE_COLLAPSED, BADGE_POS, badge));
 
-    badge.querySelector('.action').addEventListener('click', () => onBadgeAction(restoreOriginalsCallback, reapplyCallback));
-    badge.querySelector('.inspect').addEventListener('click', enterInspectionMode);
+    badge.querySelector('.neutralizer-action').addEventListener('click', () => onBadgeAction(restoreOriginalsCallback, reapplyCallback));
+    badge.querySelector('.neutralizer-inspect').addEventListener('click', enterInspectionMode);
   }
 
   /**
@@ -1882,11 +1882,10 @@
     if (BADGE_COLLAPSED.value) return;
 
     isBadgeDragging = true;
-    badge.classList.add('dragging');
+    badge.classList.add('neutralizer-dragging');
 
     const rect = badge.getBoundingClientRect();
-    badgeDragOffset.x = e.clientX - rect.left;
-    badgeDragOffset.y = e.clientY - rect.top;
+    badgeDragOffsetY = e.clientY - rect.top;
 
     boundOnBadgeDrag = (e) => onBadgeDrag(e, BADGE_POS);
     boundStopBadgeDrag = () => stopBadgeDrag(storage, BADGE_POS);
@@ -1898,23 +1897,16 @@
   }
 
   /**
-   * Handle badge dragging
+   * Handle badge dragging (vertical only, stays docked right)
    */
   function onBadgeDrag(e, BADGE_POS) {
     if (!isBadgeDragging) return;
 
-    let newX = e.clientX - badgeDragOffset.x;
-    let newY = e.clientY - badgeDragOffset.y;
-
-    const maxX = window.innerWidth - badge.offsetWidth;
+    let newY = e.clientY - badgeDragOffsetY;
     const maxY = window.innerHeight - badge.offsetHeight;
-    newX = Math.max(0, Math.min(newX, maxX));
     newY = Math.max(0, Math.min(newY, maxY));
 
-    badge.style.left = `${newX}px`;
     badge.style.top = `${newY}px`;
-
-    BADGE_POS.x = newX;
     BADGE_POS.y = newY;
   }
 
@@ -1925,7 +1917,7 @@
     if (!isBadgeDragging) return;
 
     isBadgeDragging = false;
-    badge.classList.remove('dragging');
+    badge.classList.remove('neutralizer-dragging');
 
     if (boundOnBadgeDrag) {
       document.removeEventListener('mousemove', boundOnBadgeDrag);
@@ -1949,20 +1941,13 @@
     const currentY = parseInt(badge.style.top) || BADGE_POS.y;
 
     if (BADGE_COLLAPSED.value) {
-      badge.classList.add('collapsed');
-      badge.style.left = '';
-      badge.style.right = '0px';
-      badge.style.top = `${currentY}px`;
+      badge.classList.add('neutralizer-collapsed');
     } else {
-      badge.classList.remove('collapsed');
-      badge.style.left = '';
-      badge.style.right = '0px';
-      badge.style.top = `${currentY}px`;
-
-      BADGE_POS.x = 0;
-      BADGE_POS.y = currentY;
-      storage.set(STORAGE_KEYS.BADGE_POS, JSON.stringify(BADGE_POS));
+      badge.classList.remove('neutralizer-collapsed');
     }
+    badge.style.top = `${currentY}px`;
+    BADGE_POS.y = currentY;
+    storage.set(STORAGE_KEYS.BADGE_POS, JSON.stringify(BADGE_POS));
 
     const handle = badge.querySelector('.badge-handle');
     if (handle) {
@@ -1978,11 +1963,11 @@
     if (badgeState === 'calmed') {
       restoreOriginals();
       badgeState = 'originals';
-      badge.querySelector('.action').textContent = 'H: original';
+      badge.querySelector('.neutralizer-action').textContent = 'H: original';
     } else {
       reapplyFromCache();
       badgeState = 'calmed';
-      badge.querySelector('.action').textContent = 'H: neutral';
+      badge.querySelector('.neutralizer-action').textContent = 'H: neutral';
     }
   }
 
@@ -2619,7 +2604,7 @@
   // @namespace    https://fanis.dev/userscripts
   // @author       Fanis Hatzidakis
   // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-  // @version      2.2.0
+  // @version      2.3.0
   // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
   // @match        *://*/*
   // @exclude      about:*

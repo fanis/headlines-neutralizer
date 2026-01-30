@@ -8,7 +8,7 @@ import { log, textTrim } from './utils.js';
 let badge = null;
 let badgeState = 'calmed'; // 'calmed' or 'originals'
 let isBadgeDragging = false;
-let badgeDragOffset = { x: 0, y: 0 };
+let badgeDragOffsetY = 0;
 let boundOnBadgeDrag = null;
 let boundStopBadgeDrag = null;
 
@@ -22,7 +22,7 @@ export function ensureBadge(DOMAIN_DISABLED, OPTED_OUT, SHOW_BADGE, BADGE_COLLAP
 
   badge = document.createElement('div');
   badge.className = 'neutralizer-badge';
-  if (BADGE_COLLAPSED.value) badge.classList.add('collapsed');
+  if (BADGE_COLLAPSED.value) badge.classList.add('neutralizer-collapsed');
   badge.setAttribute(UI_ATTR, '');
 
   const maxY = window.innerHeight - 200;
@@ -35,11 +35,11 @@ export function ensureBadge(DOMAIN_DISABLED, OPTED_OUT, SHOW_BADGE, BADGE_COLLAP
     <div class="badge-handle" title="${BADGE_COLLAPSED.value ? 'Open' : 'Close'}">${BADGE_COLLAPSED.value ? '◀' : '▶'}</div>
     <div class="badge-header">NEUTRALIZE HEADLINES</div>
     <div class="badge-content">
-      <div class="row">
-        <button class="btn primary action">H: neutral</button>
+      <div class="neutralizer-row">
+        <button class="neutralizer-btn neutralizer-primary neutralizer-action">H: neutral</button>
       </div>
-      <div class="row">
-        <button class="btn inspect">Inspect</button>
+      <div class="neutralizer-row">
+        <button class="neutralizer-btn neutralizer-inspect">Inspect</button>
       </div>
     </div>
   `;
@@ -51,8 +51,8 @@ export function ensureBadge(DOMAIN_DISABLED, OPTED_OUT, SHOW_BADGE, BADGE_COLLAP
   header.addEventListener('mousedown', (e) => startBadgeDrag(e, BADGE_COLLAPSED, BADGE_POS, storage));
   handle.addEventListener('click', () => toggleBadgeCollapse(storage, BADGE_COLLAPSED, BADGE_POS, badge));
 
-  badge.querySelector('.action').addEventListener('click', () => onBadgeAction(restoreOriginalsCallback, reapplyCallback));
-  badge.querySelector('.inspect').addEventListener('click', enterInspectionMode);
+  badge.querySelector('.neutralizer-action').addEventListener('click', () => onBadgeAction(restoreOriginalsCallback, reapplyCallback));
+  badge.querySelector('.neutralizer-inspect').addEventListener('click', enterInspectionMode);
 }
 
 /**
@@ -62,11 +62,10 @@ function startBadgeDrag(e, BADGE_COLLAPSED, BADGE_POS, storage) {
   if (BADGE_COLLAPSED.value) return;
 
   isBadgeDragging = true;
-  badge.classList.add('dragging');
+  badge.classList.add('neutralizer-dragging');
 
   const rect = badge.getBoundingClientRect();
-  badgeDragOffset.x = e.clientX - rect.left;
-  badgeDragOffset.y = e.clientY - rect.top;
+  badgeDragOffsetY = e.clientY - rect.top;
 
   boundOnBadgeDrag = (e) => onBadgeDrag(e, BADGE_POS);
   boundStopBadgeDrag = () => stopBadgeDrag(storage, BADGE_POS);
@@ -78,23 +77,16 @@ function startBadgeDrag(e, BADGE_COLLAPSED, BADGE_POS, storage) {
 }
 
 /**
- * Handle badge dragging
+ * Handle badge dragging (vertical only, stays docked right)
  */
 function onBadgeDrag(e, BADGE_POS) {
   if (!isBadgeDragging) return;
 
-  let newX = e.clientX - badgeDragOffset.x;
-  let newY = e.clientY - badgeDragOffset.y;
-
-  const maxX = window.innerWidth - badge.offsetWidth;
+  let newY = e.clientY - badgeDragOffsetY;
   const maxY = window.innerHeight - badge.offsetHeight;
-  newX = Math.max(0, Math.min(newX, maxX));
   newY = Math.max(0, Math.min(newY, maxY));
 
-  badge.style.left = `${newX}px`;
   badge.style.top = `${newY}px`;
-
-  BADGE_POS.x = newX;
   BADGE_POS.y = newY;
 }
 
@@ -105,7 +97,7 @@ function stopBadgeDrag(storage, BADGE_POS) {
   if (!isBadgeDragging) return;
 
   isBadgeDragging = false;
-  badge.classList.remove('dragging');
+  badge.classList.remove('neutralizer-dragging');
 
   if (boundOnBadgeDrag) {
     document.removeEventListener('mousemove', boundOnBadgeDrag);
@@ -129,20 +121,13 @@ export async function toggleBadgeCollapse(storage, BADGE_COLLAPSED, BADGE_POS, b
   const currentY = parseInt(badge.style.top) || BADGE_POS.y;
 
   if (BADGE_COLLAPSED.value) {
-    badge.classList.add('collapsed');
-    badge.style.left = '';
-    badge.style.right = '0px';
-    badge.style.top = `${currentY}px`;
+    badge.classList.add('neutralizer-collapsed');
   } else {
-    badge.classList.remove('collapsed');
-    badge.style.left = '';
-    badge.style.right = '0px';
-    badge.style.top = `${currentY}px`;
-
-    BADGE_POS.x = 0;
-    BADGE_POS.y = currentY;
-    storage.set(STORAGE_KEYS.BADGE_POS, JSON.stringify(BADGE_POS));
+    badge.classList.remove('neutralizer-collapsed');
   }
+  badge.style.top = `${currentY}px`;
+  BADGE_POS.y = currentY;
+  storage.set(STORAGE_KEYS.BADGE_POS, JSON.stringify(BADGE_POS));
 
   const handle = badge.querySelector('.badge-handle');
   if (handle) {
@@ -158,11 +143,11 @@ function onBadgeAction(restoreOriginals, reapplyFromCache) {
   if (badgeState === 'calmed') {
     restoreOriginals();
     badgeState = 'originals';
-    badge.querySelector('.action').textContent = 'H: original';
+    badge.querySelector('.neutralizer-action').textContent = 'H: original';
   } else {
     reapplyFromCache();
     badgeState = 'calmed';
-    badge.querySelector('.action').textContent = 'H: neutral';
+    badge.querySelector('.neutralizer-action').textContent = 'H: neutral';
   }
 }
 

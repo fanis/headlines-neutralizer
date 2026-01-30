@@ -30,10 +30,10 @@ export function ensureHighlightCSS() {
       box-sizing: border-box !important; width: max-content !important; min-width: 120px !important;
       margin: 0 !important; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
       user-select: none !important; }
-    .neutralizer-badge.collapsed { right: 0 !important; left: auto !important;
+    .neutralizer-badge.neutralizer-collapsed { right: 0 !important; left: auto !important;
       transform: translateX(100%) !important; border-right: none !important;
       border-radius: 10px 0 0 10px !important; box-shadow: -4px 0 22px rgba(0,0,0,.18) !important; }
-    .neutralizer-badge.dragging { transition: none !important; cursor: grabbing !important; }
+    .neutralizer-badge.neutralizer-dragging { transition: none !important; cursor: grabbing !important; }
     .neutralizer-badge .badge-handle { position: absolute !important; left: -28px !important; top: 50% !important;
       transform: translateY(-50%) !important; width: 28px !important; height: 56px !important;
       background: linear-gradient(90deg, #d4f8e8 0%, #c9f6e1 100%) !important; border: 1px solid #79d4b0 !important; border-right: none !important;
@@ -51,17 +51,17 @@ export function ensureHighlightCSS() {
     .neutralizer-badge .badge-content { display: flex !important; flex-direction: column !important;
       gap: 6px !important; padding: 8px 10px !important; }
     .neutralizer-badge * { box-sizing: border-box !important; }
-    .neutralizer-badge .row { display: flex !important; gap: 8px !important; align-items: center !important;
+    .neutralizer-badge .neutralizer-row { display: flex !important; gap: 8px !important; align-items: center !important;
       justify-content: center !important; margin: 0 !important; padding: 0 !important; width: 100%; }
-    .neutralizer-badge .btn { cursor: pointer !important; padding: 6px 10px !important; border-radius: 8px !important;
+    .neutralizer-badge .neutralizer-btn { cursor: pointer !important; padding: 6px 10px !important; border-radius: 8px !important;
       border: 1px solid #79d4b0 !important; background: #fff !important; box-sizing: border-box !important;
       white-space: nowrap !important; font-family: system-ui, sans-serif !important;
       font-size: 12px !important; line-height: 1.2 !important; color: #0b3d2c !important;
       margin: 0 !important; min-width: 0 !important; width: auto !important; }
-    .neutralizer-badge .btn.primary { background: #0b3d2c !important; color: #fff !important;
+    .neutralizer-badge .neutralizer-btn.neutralizer-primary { background: #0b3d2c !important; color: #fff !important;
       border-color: #0b3d2c !important; }
-    .neutralizer-badge .btn:disabled { opacity: 0.6 !important; cursor: not-allowed !important; }
-    .neutralizer-badge .small { font-size: 11px !important; opacity: .9 !important; }
+    .neutralizer-badge .neutralizer-btn:disabled { opacity: 0.6 !important; cursor: not-allowed !important; }
+    .neutralizer-badge .neutralizer-small { font-size: 11px !important; opacity: .9 !important; }
   `;
   document.head.appendChild(style);
 }

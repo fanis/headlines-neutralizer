@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.3.0] - 2026-01-30
+
+### Fixed
+- **Intrusive 400 error popups** - Each API error type now shown at most once per page load instead of spamming popups on pages with many batches
+- **Input sanitization** - Strip C0 control characters, Unicode specials, zero-width characters and BOM from headlines before sending to API, preventing 400 errors on pages with problematic text
+
+### Changed
+- **Badge locked to right edge** - Badge can only be dragged vertically; no longer undocks horizontally
+- **CSS class namespacing** - All badge CSS classes prefixed with `neutralizer-` to prevent host page style interference
+
+
 ## [2.2.0] - 2026-01-23
 
 ### Changed
