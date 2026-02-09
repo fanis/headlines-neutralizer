@@ -523,6 +523,36 @@ describe('API Integration', () => {
       await resultPromise;
     });
 
+    it('should sanitize C1 control chars, bidi, surrogates, soft hyphens, and non-characters', async () => {
+      const mockResponse = {
+        output_text: '["Clean headline"]',
+        usage: { input_tokens: 50, output_tokens: 25 }
+      };
+
+      mockGM_xmlhttpRequest.mockImplementation((opts) => {
+        const body = JSON.parse(opts.data);
+        const input = JSON.parse(body.input);
+
+        // Verify all problematic chars were removed
+        expect(input[0]).not.toMatch(/[\x80-\x9F]/);         // C1 control chars
+        expect(input[0]).not.toMatch(/[\u202A-\u202E]/);      // bidi controls
+        expect(input[0]).not.toMatch(/[\u2066-\u2069]/);      // bidi isolates
+        expect(input[0]).not.toMatch(/[\u00AD]/);             // soft hyphen
+        expect(input[0]).not.toMatch(/[\uFDD0-\uFDEF]/);     // non-characters
+        expect(input[0]).toBe('Greek headline test');
+
+        setTimeout(() => {
+          opts.onload({ status: 200, responseText: JSON.stringify(mockResponse) });
+        }, 0);
+      });
+
+      const resultPromise = rewriteBatch(mockStorage, [
+        'Greek\u0085 head\u00ADline\u202A \u0080test\uFDD0'
+      ]);
+      await vi.runAllTimersAsync();
+      await resultPromise;
+    });
+
     it('should track token usage', async () => {
       API_TOKENS.headlines = { input: 0, output: 0, calls: 0 };
 

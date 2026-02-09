@@ -770,9 +770,14 @@
 
     const safeInputs = texts.map(t =>
       t.replace(/[\u2028\u2029]/g, ' ')
-       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')       // strip C0 control chars (keep \t \n \r)
+       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')        // strip C0 control chars (keep \t \n \r)
+       .replace(/[\x80-\x9F]/g, '')                               // strip C1 control chars (Windows-1253 artifacts)
        .replace(/[\uFFF0-\uFFFF]/g, '')                           // strip specials block
+       .replace(/[\uFDD0-\uFDEF]/g, '')                           // strip Unicode non-characters
        .replace(/[\u200B-\u200F\u2060\uFEFF]/g, '')               // strip zero-width / BOM
+       .replace(/[\u202A-\u202E\u2066-\u2069]/g, '')              // strip bidi control chars
+       .replace(/[\u00AD]/g, '')                                   // strip soft hyphens
+       .replace(/[\uD800-\uDFFF]/g, '')                            // strip lone surrogates
     );
     const instructions =
       'You will receive INPUT as a JSON array of headlines.' +
@@ -2811,6 +2816,7 @@
         log(`[stats] batches=${STATS.batches} total=${STATS.total} (live=${STATS.live}, cache=${STATS.cache})`);
       } catch (e) {
         console.error('error:', e);
+        if (e.body) log('API error body:', e.body.substring(0, 500));
         friendlyApiError(e);
       }
       if (pending.size) scheduleFlush();
