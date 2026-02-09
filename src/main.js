@@ -228,6 +228,7 @@ import { enterInspectionMode } from './modules/inspection.js';
       log(`[stats] batches=${STATS.batches} total=${STATS.total} (live=${STATS.live}, cache=${STATS.cache})`);
     } catch (e) {
       console.error('error:', e);
+      if (e.body) log('API error body:', e.body.substring(0, 500));
       friendlyApiError(e);
     }
     if (pending.size) scheduleFlush();
