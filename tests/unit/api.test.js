@@ -523,32 +523,53 @@ describe('API Integration', () => {
       await resultPromise;
     });
 
-    it('should sanitize C1 control chars, bidi, surrogates, soft hyphens, and non-characters', async () => {
+    it('should sanitize all problematic Unicode character classes', async () => {
       const mockResponse = {
         output_text: '["Clean headline"]',
         usage: { input_tokens: 50, output_tokens: 25 }
       };
 
+      // Build input with at least one char from every sanitized range
+      const dirty = [
+        'A',
+        '\u2028',          // line separator  -> replaced with space
+        '\u2029',          // paragraph sep   -> replaced with space
+        '\x00\x08\x0B\x0C\x0E\x1F\x7F', // C0 control chars (stripped)
+        '\x80\x85\x9F',   // C1 control chars (stripped)
+        '\uFFF0\uFFFF',   // specials block (stripped)
+        '\uFDD0\uFDEF',   // Unicode non-characters (stripped)
+        '\u200B\u200F\u2060\uFEFF', // zero-width / BOM (stripped)
+        '\u202A\u202E',   // bidi embedding/override (stripped)
+        '\u2066\u2069',   // bidi isolates (stripped)
+        '\u00AD',          // soft hyphen (stripped)
+        '\uD800\uDFFF',   // lone surrogates (stripped)
+        'B',
+      ].join('');
+
       mockGM_xmlhttpRequest.mockImplementation((opts) => {
         const body = JSON.parse(opts.data);
         const input = JSON.parse(body.input);
 
-        // Verify all problematic chars were removed
-        expect(input[0]).not.toMatch(/[\x80-\x9F]/);         // C1 control chars
-        expect(input[0]).not.toMatch(/[\u202A-\u202E]/);      // bidi controls
-        expect(input[0]).not.toMatch(/[\u2066-\u2069]/);      // bidi isolates
-        expect(input[0]).not.toMatch(/[\u00AD]/);             // soft hyphen
-        expect(input[0]).not.toMatch(/[\uFDD0-\uFDEF]/);     // non-characters
-        expect(input[0]).toBe('Greek headline test');
+        // Verify every sanitized range is absent
+        expect(input[0]).not.toMatch(/[\u2028\u2029]/);        // line/paragraph separators
+        expect(input[0]).not.toMatch(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/); // C0 control chars
+        expect(input[0]).not.toMatch(/[\x80-\x9F]/);           // C1 control chars
+        expect(input[0]).not.toMatch(/[\uFFF0-\uFFFF]/);       // specials block
+        expect(input[0]).not.toMatch(/[\uFDD0-\uFDEF]/);       // Unicode non-characters
+        expect(input[0]).not.toMatch(/[\u200B-\u200F\u2060\uFEFF]/); // zero-width / BOM
+        expect(input[0]).not.toMatch(/[\u202A-\u202E\u2066-\u2069]/); // bidi controls
+        expect(input[0]).not.toMatch(/[\u00AD]/);              // soft hyphen
+        expect(input[0]).not.toMatch(/[\uD800-\uDFFF]/);       // lone surrogates
+
+        // \u2028 and \u2029 become spaces; everything else stripped
+        expect(input[0]).toBe('A  B');
 
         setTimeout(() => {
           opts.onload({ status: 200, responseText: JSON.stringify(mockResponse) });
         }, 0);
       });
 
-      const resultPromise = rewriteBatch(mockStorage, [
-        'Greek\u0085 head\u00ADline\u202A \u0080test\uFDD0'
-      ]);
+      const resultPromise = rewriteBatch(mockStorage, [dirty]);
       await vi.runAllTimersAsync();
       await resultPromise;
     });

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.3.1] - 2026-02-10
+
+### Fixed
+- **Expanded Unicode sanitization for Greek text** - Strip C1 control chars (Windows-1253 artifacts), bidi control/isolate chars, soft hyphens, lone surrogates, and Unicode non-characters from headlines before API calls, preventing 400 errors on philenews and other Greek news sites
+- **API error logging** - Log response body (first 500 chars) on API errors for easier debugging
+
+### Changed
+- **Exhaustive sanitization tests** - Test now covers every character class with representative chars from each range
+
+
 ## [2.3.0] - 2026-01-30
 
 ### Fixed
