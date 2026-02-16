@@ -1,6 +1,6 @@
 # Neutralize Headlines Userscript - Setup & Usage Guide
 
-> **Latest Version**: 2.3.1 | [See What's New](CHANGELOG.md)
+> **Latest Version**: 2.4.0 | [See What's New](CHANGELOG.md)
 
 ## Table of Contents
 - [What It Does](#what-it-does)

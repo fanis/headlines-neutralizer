@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.4.0] - 2026-02-16
+
+### Added
+- **Badge gear popover** - Settings gear button on the badge opens a popover with quick access to all controls: Edit Selectors, Inspect Elements, Show Included, Strength (1-5), Auto-detect toggle, Stats & Changes, Flush Cache & Rerun
+- **Tabbed Edit Selectors dialog** - Shadow DOM dialog with Global and Domain tabs, each with 3 textareas (targets, excludes self, excludes ancestors), Reset Defaults and Save & Reload
+- **Show Included Elements** - Highlights all matched elements: green for included, red for excluded, blue for auto-detected candidates, with count banner and ESC/click to exit
+- **Badge status row** - Shows Ready/Processing/Neutralized/Reverted state below the toggle button
+- **Smart popover positioning** - Popover appears above or below the badge based on available viewport space
+
+### Changed
+- **Badge redesigned** - Compact 2-line header, status row with gear button, removed dedicated Inspect button (moved to popover)
+- **Strength control** - Now shows numbers 1-5 with full name tooltips instead of long text labels
+- **Badge handle** - Always shows right border, extends on hover for better grab affordance
+- **TM menu cleaned up** - Removed 6 selector editor commands, stats, flush cache, process visible, reset stats (all moved to badge popover)
+- **CSS isolation** - Selector editor uses Shadow DOM with `:host { all: initial }` to prevent page CSS interference; all badge CSS uses `!important` and `neutralizer-` prefix
+
+
 ## [2.3.1] - 2026-02-10
 
 ### Fixed
