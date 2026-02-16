@@ -977,7 +977,7 @@
       border: 1px solid #79d4b0 !important; padding: 0 !important; border-radius: 10px !important;
       box-shadow: 0 6px 22px rgba(0,0,0,.18) !important;
       display: flex !important; flex-direction: column !important; gap: 0 !important;
-      box-sizing: border-box !important; width: max-content !important; min-width: 120px !important;
+      box-sizing: border-box !important; width: max-content !important; min-width: 90px !important;
       margin: 0 !important; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
       user-select: none !important; }
     .neutralizer-badge.neutralizer-collapsed { right: 0 !important; left: auto !important;
@@ -986,32 +986,100 @@
     .neutralizer-badge.neutralizer-dragging { transition: none !important; cursor: grabbing !important; }
     .neutralizer-badge .badge-handle { position: absolute !important; left: -28px !important; top: 50% !important;
       transform: translateY(-50%) !important; width: 28px !important; height: 56px !important;
-      background: linear-gradient(90deg, #d4f8e8 0%, #c9f6e1 100%) !important; border: 1px solid #79d4b0 !important; border-right: none !important;
+      background: linear-gradient(90deg, #d4f8e8 0%, #c9f6e1 100%) !important; border: 1px solid #79d4b0 !important;
       border-radius: 8px 0 0 8px !important; cursor: pointer !important;
       display: flex !important; align-items: center !important; justify-content: center !important;
       font-size: 14px !important; color: #0b3d2c !important; user-select: none !important;
-      box-shadow: -3px 0 12px rgba(0,0,0,.12) !important; transition: all 0.2s ease !important; }
-    .neutralizer-badge .badge-handle:hover { left: -30px !important; box-shadow: -4px 0 16px rgba(0,0,0,.18) !important; }
+      box-shadow: -3px 0 12px rgba(0,0,0,.12) !important; transition: all 0.15s ease !important; }
+    .neutralizer-badge .badge-handle:hover { left: -31px !important; width: 31px !important;
+      box-shadow: -4px 0 16px rgba(0,0,0,.18) !important; }
     .neutralizer-badge .badge-header { background: linear-gradient(135deg, #2d6a54 0%, #0b3d2c 100%) !important;
-      color: #fff !important; padding: 6px 10px !important; font-size: 10px !important;
+      color: #fff !important; padding: 4px 8px !important; font-size: 9px !important;
       font-weight: 600 !important; text-align: center !important; cursor: grab !important;
       user-select: none !important; border-radius: 9px 9px 0 0 !important;
-      letter-spacing: 0.3px !important; }
+      letter-spacing: 0.3px !important; line-height: 1.3 !important; white-space: pre-line !important; }
     .neutralizer-badge .badge-header:active { cursor: grabbing !important; }
     .neutralizer-badge .badge-content { display: flex !important; flex-direction: column !important;
-      gap: 6px !important; padding: 8px 10px !important; }
+      gap: 4px !important; padding: 6px 8px !important; }
     .neutralizer-badge * { box-sizing: border-box !important; }
     .neutralizer-badge .neutralizer-row { display: flex !important; gap: 8px !important; align-items: center !important;
       justify-content: center !important; margin: 0 !important; padding: 0 !important; width: 100%; }
-    .neutralizer-badge .neutralizer-btn { cursor: pointer !important; padding: 6px 10px !important; border-radius: 8px !important;
+    .neutralizer-badge .neutralizer-btn { cursor: pointer !important; padding: 5px 8px !important; border-radius: 6px !important;
       border: 1px solid #79d4b0 !important; background: #fff !important; box-sizing: border-box !important;
       white-space: nowrap !important; font-family: system-ui, sans-serif !important;
-      font-size: 12px !important; line-height: 1.2 !important; color: #0b3d2c !important;
-      margin: 0 !important; min-width: 0 !important; width: auto !important; }
+      font-size: 11px !important; line-height: 1.2 !important; color: #0b3d2c !important;
+      margin: 0 !important; min-width: 0 !important; width: 100% !important; }
     .neutralizer-badge .neutralizer-btn.neutralizer-primary { background: #0b3d2c !important; color: #fff !important;
       border-color: #0b3d2c !important; }
     .neutralizer-badge .neutralizer-btn:disabled { opacity: 0.6 !important; cursor: not-allowed !important; }
     .neutralizer-badge .neutralizer-small { font-size: 11px !important; opacity: .9 !important; }
+
+    /* Status row */
+    .neutralizer-badge .neutralizer-status-row { display: flex !important; align-items: center !important;
+      justify-content: space-between !important; gap: 6px !important; margin: 0 !important;
+      padding: 0 !important; width: 100% !important; }
+    .neutralizer-badge .neutralizer-status { font: 10px/1.2 system-ui, sans-serif !important;
+      color: #666 !important; letter-spacing: 0.2px !important; }
+
+    /* Gear icon button */
+    .neutralizer-badge .neutralizer-gear-btn { background: none !important; border: none !important;
+      cursor: pointer !important; padding: 2px 4px !important; border-radius: 4px !important;
+      font-size: 14px !important; line-height: 1 !important; color: #0b3d2c !important;
+      margin: 0 !important; min-width: 0 !important; width: auto !important;
+      transition: background 0.15s ease !important; display: flex !important;
+      align-items: center !important; justify-content: center !important; }
+    .neutralizer-badge .neutralizer-gear-btn:hover { background: rgba(11,61,44,0.1) !important; }
+
+    /* Popover container */
+    .neutralizer-badge .neutralizer-popover { position: absolute !important; right: 0 !important;
+      min-width: 200px !important;
+      background: #fff !important; border: 1px solid #d0d0d0 !important; border-radius: 10px !important;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.2) !important; padding: 6px 0 !important;
+      display: none !important; z-index: 2147483647 !important;
+      font: 12px/1.4 system-ui, sans-serif !important; color: #1a1a1a !important; }
+    .neutralizer-badge .neutralizer-popover.neutralizer-popover-open { display: block !important; }
+
+    /* Popover menu item button */
+    .neutralizer-badge .neutralizer-popover-item { display: block !important; width: 100% !important;
+      padding: 8px 14px !important; border: none !important; background: none !important;
+      text-align: left !important; cursor: pointer !important; font: 13px/1.3 system-ui, sans-serif !important;
+      color: #1a1a1a !important; white-space: nowrap !important; box-sizing: border-box !important;
+      margin: 0 !important; border-radius: 0 !important; }
+    .neutralizer-badge .neutralizer-popover-item:hover { background: #f0f0f0 !important; }
+
+    /* Popover separator */
+    .neutralizer-badge .neutralizer-popover-sep { border: none !important;
+      border-top: 1px solid #e0e0e0 !important; margin: 4px 0 !important; padding: 0 !important; }
+
+    /* Settings group (label + segmented row) */
+    .neutralizer-badge .neutralizer-popover-group { padding: 6px 14px !important; margin: 0 !important; }
+    .neutralizer-badge .neutralizer-popover-label { font: 600 11px/1.2 system-ui, sans-serif !important;
+      color: #666 !important; margin: 0 0 4px !important; text-transform: uppercase !important;
+      letter-spacing: 0.3px !important; display: block !important; }
+
+    /* Segmented control row */
+    .neutralizer-badge .neutralizer-popover-seg { display: flex !important; gap: 0 !important;
+      border: 1px solid #79d4b0 !important; border-radius: 6px !important; overflow: hidden !important;
+      margin: 0 !important; }
+
+    /* Segmented option button */
+    .neutralizer-badge .neutralizer-popover-option { flex: 1 !important; padding: 5px 8px !important;
+      border: none !important; border-right: 1px solid #79d4b0 !important;
+      background: #fff !important; cursor: pointer !important;
+      font: 11px/1.2 system-ui, sans-serif !important; color: #0b3d2c !important;
+      text-align: center !important; white-space: nowrap !important; margin: 0 !important;
+      border-radius: 0 !important; min-width: 0 !important; }
+    .neutralizer-badge .neutralizer-popover-option:last-child { border-right: none !important; }
+    .neutralizer-badge .neutralizer-popover-option:hover { background: #e8f5e9 !important; }
+    .neutralizer-badge .neutralizer-popover-option.neutralizer-popover-active {
+      background: #0b3d2c !important; color: #fff !important; }
+
+    /* Show Included Elements overlay banner */
+    .neutralizer-included-banner { position: fixed !important; top: 0 !important; left: 0 !important;
+      right: 0 !important; z-index: 2147483647 !important; padding: 10px 20px !important;
+      background: #0b3d2c !important; color: #fff !important;
+      font: 600 14px/1.4 system-ui, sans-serif !important; text-align: center !important;
+      cursor: pointer !important; box-shadow: 0 4px 16px rgba(0,0,0,0.25) !important; }
   `;
     document.head.appendChild(style);
   }
@@ -1476,6 +1544,160 @@
   }
 
   /**
+   * Tabbed Edit Selectors dialog
+   */
+  function openSelectorEditor({ HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_GLOBAL, EXCLUDE_DOMAIN, DEFAULT_SELECTORS, DEFAULT_EXCLUDES, onSave }) {
+    const host = document.createElement('div');
+    host.setAttribute(UI_ATTR, '');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const style = document.createElement('style');
+    style.textContent = `
+    :host { all: initial; display: block; }
+    .wrap{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.5);
+          display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif}
+    .modal{background:#fff;max-width:720px;width:94%;max-height:90vh;overflow-y:auto;
+           border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.4);padding:0;box-sizing:border-box}
+    .modal-header{display:flex;justify-content:space-between;align-items:center;
+                  padding:16px 20px;border-bottom:1px solid #e0e0e0}
+    .modal-header h3{margin:0;font:700 18px/1.2 system-ui,sans-serif;color:#1a1a1a}
+    .close-btn{background:none;border:none;font-size:22px;cursor:pointer;color:#666;padding:4px 8px;
+               border-radius:4px}
+    .close-btn:hover{background:#f0f0f0}
+    .tabs{display:flex;border-bottom:2px solid #e0e0e0;padding:0 20px}
+    .tab{padding:10px 20px;font:600 13px/1.2 system-ui,sans-serif;color:#666;cursor:pointer;
+         border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-2px;
+         transition:all 0.15s}
+    .tab:hover{color:#1a1a1a}
+    .tab.active{color:#0b3d2c;border-bottom-color:#0b3d2c}
+    .tab-content{display:none;padding:16px 20px}
+    .tab-content.active{display:block}
+    .section-label{font:600 13px/1.2 system-ui,sans-serif;margin:12px 0 4px;color:#444}
+    .section-label:first-child{margin-top:0}
+    textarea{width:100%;resize:vertical;padding:10px;box-sizing:border-box;
+             font:13px/1.4 ui-monospace,Consolas,monospace;border:1px solid #ccc;border-radius:6px}
+    textarea.full{height:160px}
+    textarea.readonly{background:#f5f5f5;color:#666;height:80px}
+    textarea.domain-edit{height:100px}
+    .hint{margin:4px 0 0;color:#888;font:11px/1.3 system-ui,sans-serif}
+    .footer{display:flex;gap:8px;justify-content:flex-end;padding:12px 20px;
+            border-top:1px solid #e0e0e0}
+    .btn{padding:8px 16px;border-radius:8px;border:1px solid #d0d0d0;background:#f6f6f6;
+         cursor:pointer;font:600 13px system-ui,sans-serif}
+    .btn:hover{background:#eee}
+    .btn.save{background:#0b3d2c;color:#fff;border-color:#0b3d2c}
+    .btn.save:hover{background:#07291c}
+    .btn.reset{background:#fff;color:#d32f2f;border-color:#d32f2f}
+    .btn.reset:hover{background:#fef0f0}
+  `;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'wrap';
+    wrap.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Edit Selectors">
+      <div class="modal-header">
+        <h3>Edit Selectors</h3>
+        <button class="close-btn" title="Close">\u00d7</button>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="global">Global</button>
+        <button class="tab" data-tab="domain">${escapeHtml(HOST)}</button>
+      </div>
+      <div class="tab-content active" data-tab="global">
+        <div class="section-label">Target selectors</div>
+        <textarea class="full" id="g-sel" spellcheck="false">${escapeHtml((SELECTORS_GLOBAL || []).join('\n'))}</textarea>
+        <div class="hint">CSS selectors matched on all domains. One per line.</div>
+        <div class="section-label">Exclude elements (self)</div>
+        <textarea class="full" id="g-exs" spellcheck="false">${escapeHtml(((EXCLUDE_GLOBAL || {}).self || []).join('\n'))}</textarea>
+        <div class="hint">Elements matching these selectors are skipped.</div>
+        <div class="section-label">Exclude containers (ancestors)</div>
+        <textarea class="full" id="g-exa" spellcheck="false">${escapeHtml(((EXCLUDE_GLOBAL || {}).ancestors || []).join('\n'))}</textarea>
+        <div class="hint">Elements inside these containers are skipped.</div>
+      </div>
+      <div class="tab-content" data-tab="domain">
+        <div class="section-label">Global target selectors (read-only)</div>
+        <textarea class="readonly" readonly spellcheck="false">${escapeHtml((SELECTORS_GLOBAL || []).join('\n'))}</textarea>
+        <div class="section-label">Domain additions: target selectors</div>
+        <textarea class="domain-edit" id="d-sel" spellcheck="false">${escapeHtml((SELECTORS_DOMAIN || []).join('\n'))}</textarea>
+        <div class="hint">Added to global selectors for ${escapeHtml(HOST)} only.</div>
+        <div class="section-label">Global exclude elements (read-only)</div>
+        <textarea class="readonly" readonly spellcheck="false">${escapeHtml(((EXCLUDE_GLOBAL || {}).self || []).join('\n'))}</textarea>
+        <div class="section-label">Domain additions: exclude elements</div>
+        <textarea class="domain-edit" id="d-exs" spellcheck="false">${escapeHtml(((EXCLUDE_DOMAIN || {}).self || []).join('\n'))}</textarea>
+        <div class="section-label">Global exclude containers (read-only)</div>
+        <textarea class="readonly" readonly spellcheck="false">${escapeHtml(((EXCLUDE_GLOBAL || {}).ancestors || []).join('\n'))}</textarea>
+        <div class="section-label">Domain additions: exclude containers</div>
+        <textarea class="domain-edit" id="d-exa" spellcheck="false">${escapeHtml(((EXCLUDE_DOMAIN || {}).ancestors || []).join('\n'))}</textarea>
+      </div>
+      <div class="footer">
+        <button class="btn reset">Reset Defaults</button>
+        <button class="btn cancel">Cancel</button>
+        <button class="btn save">Save &amp; Reload</button>
+      </div>
+    </div>`;
+
+    shadow.append(style, wrap);
+    document.body.appendChild(host);
+
+    const close = () => host.remove();
+    let activeTab = 'global';
+
+    // Tab switching
+    shadow.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        shadow.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        shadow.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        activeTab = tab.dataset.tab;
+        shadow.querySelector(`.tab-content[data-tab="${activeTab}"]`).classList.add('active');
+      });
+    });
+
+    // Save
+    shadow.querySelector('.save').addEventListener('click', async () => {
+      const result = {
+        global: {
+          selectors: parseLines(shadow.querySelector('#g-sel').value),
+          excludeSelf: parseLines(shadow.querySelector('#g-exs').value),
+          excludeAncestors: parseLines(shadow.querySelector('#g-exa').value)
+        },
+        domain: {
+          selectors: parseLines(shadow.querySelector('#d-sel').value),
+          excludeSelf: parseLines(shadow.querySelector('#d-exs').value),
+          excludeAncestors: parseLines(shadow.querySelector('#d-exa').value)
+        }
+      };
+      await onSave?.(result);
+      close();
+      location.reload();
+    });
+
+    // Reset
+    shadow.querySelector('.reset').addEventListener('click', () => {
+      if (activeTab === 'global') {
+        shadow.querySelector('#g-sel').value = (DEFAULT_SELECTORS || []).join('\n');
+        shadow.querySelector('#g-exs').value = ((DEFAULT_EXCLUDES || {}).self || []).join('\n');
+        shadow.querySelector('#g-exa').value = ((DEFAULT_EXCLUDES || {}).ancestors || []).join('\n');
+      } else {
+        shadow.querySelector('#d-sel').value = '';
+        shadow.querySelector('#d-exs').value = '';
+        shadow.querySelector('#d-exa').value = '';
+      }
+    });
+
+    // Close handlers
+    shadow.querySelector('.cancel').addEventListener('click', close);
+    shadow.querySelector('.close-btn').addEventListener('click', close);
+    wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+    shadow.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); shadow.querySelector('.save').click(); }
+    });
+
+    wrap.setAttribute('tabindex', '-1');
+    wrap.focus();
+  }
+
+  /**
    * Show temperature selection dialog
    */
   function openTemperatureDialog(storage, TEMPERATURE_LEVEL, setTemperature) {
@@ -1839,8 +2061,17 @@
 
   /**
    * Ensure badge exists and is rendered
+   * @param {Object} opts - Badge configuration
    */
-  function ensureBadge(DOMAIN_DISABLED, OPTED_OUT, SHOW_BADGE, BADGE_COLLAPSED, BADGE_POS, storage, enterInspectionMode, restoreOriginalsCallback, reapplyCallback) {
+  function ensureBadge(opts) {
+    const {
+      DOMAIN_DISABLED, OPTED_OUT, SHOW_BADGE, BADGE_COLLAPSED, BADGE_POS, storage,
+      onInspect, restoreOriginals, reapplyFromCache,
+      onEditSelectors, onShowIncluded, onStats, onFlushCache,
+      onStrengthChange, onAutoDetectToggle,
+      strengthLevel, autoDetectOn
+    } = opts;
+
     if ((DOMAIN_DISABLED || OPTED_OUT) || !SHOW_BADGE) return;
 
     if (badge && badge.isConnected) return;
@@ -1856,28 +2087,137 @@
     badge.style.top = `${BADGE_POS.y}px`;
     badge.style.right = '0px';
 
+    // Build strength segmented control (1=Minimal .. 5=Maximum)
+    const strengthBtns = TEMPERATURE_ORDER.map((level, i) =>
+      `<button class="neutralizer-popover-option${level === strengthLevel ? ' neutralizer-popover-active' : ''}" data-strength="${escapeHtml(level)}" title="${escapeHtml(level)}">${i + 1}</button>`
+    ).join('');
+
     badge.innerHTML = `
-    <div class="badge-handle" title="${BADGE_COLLAPSED.value ? 'Open' : 'Close'}">${BADGE_COLLAPSED.value ? '◀' : '▶'}</div>
-    <div class="badge-header">NEUTRALIZE HEADLINES</div>
+    <div class="badge-handle" title="${BADGE_COLLAPSED.value ? 'Open' : 'Close'}">${BADGE_COLLAPSED.value ? '\u25C0' : '\u25B6'}</div>
+    <div class="badge-header">Headlines\nNeutralizer</div>
     <div class="badge-content">
       <div class="neutralizer-row">
-        <button class="neutralizer-btn neutralizer-primary neutralizer-action">H: neutral</button>
+        <button class="neutralizer-btn neutralizer-primary neutralizer-action">neutral</button>
       </div>
-      <div class="neutralizer-row">
-        <button class="neutralizer-btn neutralizer-inspect">Inspect</button>
+      <div class="neutralizer-status-row">
+        <span class="neutralizer-status">Ready</span>
+        <button class="neutralizer-gear-btn" title="Settings">\u2699</button>
       </div>
+    </div>
+    <div class="neutralizer-popover">
+      <button class="neutralizer-popover-item" data-action="edit-selectors">Edit Selectors</button>
+      <button class="neutralizer-popover-item" data-action="inspect">Inspect Elements</button>
+      <button class="neutralizer-popover-item" data-action="show-included">Show Included</button>
+      <hr class="neutralizer-popover-sep">
+      <div class="neutralizer-popover-group">
+        <span class="neutralizer-popover-label">Strength</span>
+        <div class="neutralizer-popover-seg">${strengthBtns}</div>
+      </div>
+      <div class="neutralizer-popover-group">
+        <span class="neutralizer-popover-label">Auto-detect</span>
+        <div class="neutralizer-popover-seg">
+          <button class="neutralizer-popover-option${autoDetectOn ? ' neutralizer-popover-active' : ''}" data-autodetect="on">ON</button>
+          <button class="neutralizer-popover-option${!autoDetectOn ? ' neutralizer-popover-active' : ''}" data-autodetect="off">OFF</button>
+        </div>
+      </div>
+      <hr class="neutralizer-popover-sep">
+      <button class="neutralizer-popover-item" data-action="stats">Stats &amp; Changes</button>
+      <button class="neutralizer-popover-item" data-action="flush-cache">Flush Cache &amp; Rerun</button>
     </div>
   `;
     document.body.appendChild(badge);
 
+    // Core event listeners
     const header = badge.querySelector('.badge-header');
     const handle = badge.querySelector('.badge-handle');
 
     header.addEventListener('mousedown', (e) => startBadgeDrag(e, BADGE_COLLAPSED, BADGE_POS, storage));
     handle.addEventListener('click', () => toggleBadgeCollapse(storage, BADGE_COLLAPSED, BADGE_POS, badge));
 
-    badge.querySelector('.neutralizer-action').addEventListener('click', () => onBadgeAction(restoreOriginalsCallback, reapplyCallback));
-    badge.querySelector('.neutralizer-inspect').addEventListener('click', enterInspectionMode);
+    badge.querySelector('.neutralizer-action').addEventListener('click', () => onBadgeAction(restoreOriginals, reapplyFromCache));
+
+    // Gear popover toggle
+    const popover = badge.querySelector('.neutralizer-popover');
+    badge.querySelector('.neutralizer-gear-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wasOpen = popover.classList.contains('neutralizer-popover-open');
+      popover.classList.toggle('neutralizer-popover-open');
+      if (!wasOpen) positionPopover(popover);
+    });
+
+    // Close popover on click-outside
+    document.addEventListener('click', (e) => {
+      if (!badge.contains(e.target)) closePopover();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closePopover();
+    });
+
+    // Popover action items
+    popover.querySelectorAll('.neutralizer-popover-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        closePopover();
+        if (action === 'edit-selectors') onEditSelectors?.();
+        else if (action === 'inspect') onInspect?.();
+        else if (action === 'show-included') onShowIncluded?.();
+        else if (action === 'stats') onStats?.();
+        else if (action === 'flush-cache') onFlushCache?.();
+      });
+    });
+
+    // Strength segmented control
+    popover.querySelectorAll('[data-strength]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        popover.querySelectorAll('[data-strength]').forEach(b => b.classList.remove('neutralizer-popover-active'));
+        btn.classList.add('neutralizer-popover-active');
+        onStrengthChange?.(btn.dataset.strength);
+      });
+    });
+
+    // Auto-detect toggle
+    popover.querySelectorAll('[data-autodetect]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        popover.querySelectorAll('[data-autodetect]').forEach(b => b.classList.remove('neutralizer-popover-active'));
+        btn.classList.add('neutralizer-popover-active');
+        onAutoDetectToggle?.(btn.dataset.autodetect === 'on');
+      });
+    });
+  }
+
+  /**
+   * Close the popover if open
+   */
+  function closePopover() {
+    if (!badge) return;
+    const popover = badge.querySelector('.neutralizer-popover');
+    if (popover) popover.classList.remove('neutralizer-popover-open');
+  }
+
+  /**
+   * Position popover above or below badge depending on available space
+   */
+  function positionPopover(popover) {
+    // Reset to measure natural height
+    popover.style.top = '';
+    popover.style.bottom = '';
+    const badgeRect = badge.getBoundingClientRect();
+    const popoverHeight = popover.offsetHeight;
+    const spaceAbove = badgeRect.top;
+
+    if (spaceAbove >= popoverHeight + 6) {
+      // Enough room above: show above
+      popover.style.bottom = '100%';
+      popover.style.top = 'auto';
+      popover.style.marginBottom = '6px';
+      popover.style.marginTop = '';
+    } else {
+      // Not enough room above: show below
+      popover.style.top = '100%';
+      popover.style.bottom = 'auto';
+      popover.style.marginTop = '6px';
+      popover.style.marginBottom = '';
+    }
   }
 
   /**
@@ -1957,7 +2297,7 @@
     const handle = badge.querySelector('.badge-handle');
     if (handle) {
       handle.title = BADGE_COLLAPSED.value ? 'Open' : 'Close';
-      handle.textContent = BADGE_COLLAPSED.value ? '◀' : '▶';
+      handle.textContent = BADGE_COLLAPSED.value ? '\u25C0' : '\u25B6';
     }
   }
 
@@ -1965,14 +2305,18 @@
    * Handle badge action button (toggle between neutral/original)
    */
   function onBadgeAction(restoreOriginals, reapplyFromCache) {
+    const status = badge.querySelector('.neutralizer-status');
     if (badgeState === 'calmed') {
       restoreOriginals();
       badgeState = 'originals';
-      badge.querySelector('.neutralizer-action').textContent = 'H: original';
+      badge.querySelector('.neutralizer-action').textContent = 'original';
+      if (status) status.textContent = 'Reverted';
     } else {
+      if (status) status.textContent = 'Processing';
       reapplyFromCache();
       badgeState = 'calmed';
-      badge.querySelector('.neutralizer-action').textContent = 'H: neutral';
+      badge.querySelector('.neutralizer-action').textContent = 'neutral';
+      if (status) status.textContent = 'Neutralized';
     }
   }
 
@@ -2003,6 +2347,7 @@
 
   let inspectionOverlay = null;
   let inspectedElement = null;
+  let includedState = null;
 
   /**
    * Find the most specific/deepest meaningful element at coordinates
@@ -2163,6 +2508,91 @@
     message.remove();
 
     inspectionOverlay = null;
+  }
+
+  /**
+   * Show included elements with colored highlights
+   */
+  function showIncludedElements(SELECTORS, EXCLUDE) {
+    if (includedState) {
+      exitIncludedElements();
+      return;
+    }
+
+    const saved = [];
+    let includedCount = 0;
+    let excludedCount = 0;
+    let autoCount = 0;
+
+    // Manual selector matches
+    const selectorStr = compiledSelectors(SELECTORS);
+    let manualEls = [];
+    if (selectorStr) {
+      try { manualEls = [...document.querySelectorAll(selectorStr)]; } catch {}
+    }
+    const manualSet = new Set(manualEls);
+
+    for (const el of manualEls) {
+      if (el.closest(`[${UI_ATTR}]`)) continue;
+      const excluded = isExcluded(el, EXCLUDE);
+      const color = excluded ? '#ea4335' : '#34a853';
+      saved.push({ el, boxShadow: el.style.boxShadow });
+      el.style.boxShadow = `inset 0 0 0 2px ${color}`;
+      if (excluded) excludedCount++; else includedCount++;
+    }
+
+    // Auto-detected candidates (if autoDetect is on)
+    if (CFG.autoDetect) {
+      const seedSets = [
+        document.querySelectorAll('h1, h2, h3, h4, [role="heading"], [aria-level], [itemprop="headline"]'),
+        document.querySelectorAll('.lead, .deck, .standfirst, .subhead, .kicker, .teaser, .title, .headline'),
+        document.querySelectorAll(`${CARD_SELECTOR} h1, ${CARD_SELECTOR} h2, ${CARD_SELECTOR} h3, ${CARD_SELECTOR} a`)
+      ];
+      const seen = new Set(manualEls);
+      for (const list of seedSets) {
+        for (const el of list) {
+          if (!el || seen.has(el) || el.closest(`[${UI_ATTR}]`)) continue;
+          seen.add(el);
+          const excluded = isExcluded(el, EXCLUDE);
+          if (!excluded && !manualSet.has(el)) {
+            saved.push({ el, boxShadow: el.style.boxShadow });
+            el.style.boxShadow = 'inset 0 0 0 2px #1a73e8';
+            autoCount++;
+          }
+        }
+      }
+    }
+
+    // Banner
+    const banner = document.createElement('div');
+    banner.className = 'neutralizer-included-banner';
+    banner.setAttribute(UI_ATTR, '');
+    const parts = [`${includedCount} included`, `${excludedCount} excluded`];
+    if (autoCount > 0) parts.push(`${autoCount} auto-detected`);
+    banner.textContent = `${parts.join(', ')}. ESC or click to exit.`;
+    document.body.appendChild(banner);
+
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); exitIncludedElements(); } };
+    const onBannerClick = () => exitIncludedElements();
+    document.addEventListener('keydown', onKey);
+    banner.addEventListener('click', onBannerClick);
+
+    includedState = { saved, banner, onKey, onBannerClick };
+  }
+
+  /**
+   * Exit included elements highlight mode
+   */
+  function exitIncludedElements() {
+    if (!includedState) return;
+    const { saved, banner, onKey, onBannerClick } = includedState;
+    for (const { el, boxShadow } of saved) {
+      el.style.boxShadow = boxShadow;
+    }
+    document.removeEventListener('keydown', onKey);
+    banner.removeEventListener('click', onBannerClick);
+    banner.remove();
+    includedState = null;
   }
 
   /**
@@ -2900,7 +3330,6 @@
     }
 
     // Menu commands
-    GM_registerMenuCommand?.('--- Configuration ---', () => {});
     GM_registerMenuCommand?.('Set / Validate OpenAI API key', async () => {
       const current = await storage.get(STORAGE_KEYS.OPENAI_KEY, '');
       openEditor({
@@ -2919,96 +3348,6 @@
       });
     });
     GM_registerMenuCommand?.(`AI model (${MODEL_OPTIONS[CFG.model]?.name || CFG.model})`, () => openModelSelectionDialog(storage, CFG.model, setModel));
-
-    GM_registerMenuCommand?.('Edit GLOBAL target selectors', () => {
-      openEditor({
-        title: 'Global target selectors (all domains)',
-        mode: 'list',
-        initial: SELECTORS_GLOBAL,
-        hint: 'One CSS selector per line (e.g., h1, h2, h3, .lead). Applied to all domains.',
-        onSave: async (lines) => {
-          const clean = lines.filter(Boolean).map(s => s.trim()).filter(Boolean);
-          SELECTORS_GLOBAL = clean.length ? clean : DEFAULT_SELECTORS.slice();
-          await storage.set(STORAGE_KEYS.SELECTORS, JSON.stringify(SELECTORS_GLOBAL));
-          location.reload();
-        }
-      });
-    });
-
-    GM_registerMenuCommand?.('Edit GLOBAL excludes: elements (self)', () => {
-      openEditor({
-        title: 'Global excluded elements (all domains)',
-        mode: 'list',
-        initial: EXCLUDE_GLOBAL.self || [],
-        hint: 'One CSS selector per line (e.g., .sponsored, .ad-title). Applied to all domains.',
-        onSave: async (lines) => {
-          EXCLUDE_GLOBAL.self = lines;
-          await storage.set(STORAGE_KEYS.EXCLUDES, JSON.stringify(EXCLUDE_GLOBAL));
-          location.reload();
-        }
-      });
-    });
-
-    GM_registerMenuCommand?.('Edit GLOBAL excludes: containers (ancestors)', () => {
-      openEditor({
-        title: 'Global excluded containers (all domains)',
-        mode: 'list',
-        initial: EXCLUDE_GLOBAL.ancestors || [],
-        hint: 'One per line (e.g., header, footer, nav, aside). Applied to all domains.',
-        onSave: async (lines) => {
-          EXCLUDE_GLOBAL.ancestors = lines;
-          await storage.set(STORAGE_KEYS.EXCLUDES, JSON.stringify(EXCLUDE_GLOBAL));
-          location.reload();
-        }
-      });
-    });
-
-    GM_registerMenuCommand?.(`Edit DOMAIN additions: target selectors (${HOST})`, () => {
-      openEditor({
-        title: `Domain-specific target selectors for ${HOST}`,
-        mode: 'domain',
-        initial: SELECTORS_DOMAIN,
-        globalItems: SELECTORS_GLOBAL,
-        hint: 'Domain-specific selectors are added to global ones. Edit only the bottom section.',
-        onSave: async (lines) => {
-          DOMAIN_SELECTORS[HOST] = lines;
-          await storage.set(STORAGE_KEYS.DOMAIN_SELECTORS, JSON.stringify(DOMAIN_SELECTORS));
-          location.reload();
-        }
-      });
-    });
-
-    GM_registerMenuCommand?.(`Edit DOMAIN additions: excludes elements (${HOST})`, () => {
-      openEditor({
-        title: `Domain-specific excluded elements for ${HOST}`,
-        mode: 'domain',
-        initial: EXCLUDE_DOMAIN.self || [],
-        globalItems: EXCLUDE_GLOBAL.self || [],
-        hint: 'Domain-specific excludes are added to global ones. Edit only the bottom section.',
-        onSave: async (lines) => {
-          if (!DOMAIN_EXCLUDES[HOST]) DOMAIN_EXCLUDES[HOST] = { self: [], ancestors: [] };
-          DOMAIN_EXCLUDES[HOST].self = lines;
-          await storage.set(STORAGE_KEYS.DOMAIN_EXCLUDES, JSON.stringify(DOMAIN_EXCLUDES));
-          location.reload();
-        }
-      });
-    });
-
-    GM_registerMenuCommand?.(`Edit DOMAIN additions: excludes containers (${HOST})`, () => {
-      openEditor({
-        title: `Domain-specific excluded containers for ${HOST}`,
-        mode: 'domain',
-        initial: EXCLUDE_DOMAIN.ancestors || [],
-        globalItems: EXCLUDE_GLOBAL.ancestors || [],
-        hint: 'Domain-specific excludes are added to global ones. Edit only the bottom section.',
-        onSave: async (lines) => {
-          if (!DOMAIN_EXCLUDES[HOST]) DOMAIN_EXCLUDES[HOST] = { self: [], ancestors: [] };
-          DOMAIN_EXCLUDES[HOST].ancestors = lines;
-          await storage.set(STORAGE_KEYS.DOMAIN_EXCLUDES, JSON.stringify(DOMAIN_EXCLUDES));
-          location.reload();
-        }
-      });
-    });
 
     GM_registerMenuCommand?.('--- Domain Controls ---', () => {});
     GM_registerMenuCommand?.(
@@ -3047,10 +3386,6 @@
     GM_registerMenuCommand?.(`Toggle DEBUG logs (${CFG.DEBUG ? 'ON' : 'OFF'})`, async () => { await setDebug(!CFG.DEBUG); });
     GM_registerMenuCommand?.(`Toggle badge (${SHOW_BADGE ? 'ON' : 'OFF'})`, async () => { await setShowBadge(!SHOW_BADGE); });
 
-    GM_registerMenuCommand?.('--- Actions ---', () => {});
-    GM_registerMenuCommand?.('Show stats & changes (diff audit)', () => showDiffAudit(STATS, CHANGES, cache.cache, API_TOKENS, PRICING, calculateApiCost, escapeHtml, UI_ATTR));
-    GM_registerMenuCommand?.('Process visible now', () => { processVisibleNow(); });
-    GM_registerMenuCommand?.('Flush headline cache & rerun', async () => { await cache.clear(); resetAndReindex(); processVisibleNow(); });
     if (LONG_HEADLINE_EXCEPTIONS[HOST]) {
       GM_registerMenuCommand?.(`Clear long headline exception (${HOST})`, async () => {
         if (confirm(`Clear the long headline exception for ${HOST}?\n\nYou'll be prompted again if selectors match text longer than ${CFG.sanityCheckLen} characters.`)) {
@@ -3060,7 +3395,6 @@
         }
       });
     }
-    GM_registerMenuCommand?.('Reset stats counters', () => { STATS.total = STATS.live = STATS.cache = STATS.batches = 0; CHANGES.length = 0; });
     GM_registerMenuCommand?.('Reset API usage stats', async () => { await resetApiTokens(storage); openInfo('API usage stats reset. Token counters and cost tracking cleared.'); });
 
     // Bootstrap
@@ -3092,42 +3426,56 @@
     }
 
     ensureHighlightCSS();
-    ensureBadge(
-      DOMAIN_DISABLED,
-      OPTED_OUT,
-      SHOW_BADGE,
-      BADGE_COLLAPSED,
-      BADGE_POS,
-      storage,
-      () => enterInspectionMode(SELECTORS, HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_GLOBAL, EXCLUDE_DOMAIN, EXCLUDE, storage, DOMAIN_SELECTORS, DOMAIN_EXCLUDES, openInfo),
+
+    // Badge options object (shared between bootstrap and MutationObserver)
+    const badgeOpts = () => ({
+      DOMAIN_DISABLED, OPTED_OUT, SHOW_BADGE, BADGE_COLLAPSED, BADGE_POS, storage,
+      onInspect: () => enterInspectionMode(SELECTORS, HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_GLOBAL, EXCLUDE_DOMAIN, EXCLUDE, storage, DOMAIN_SELECTORS, DOMAIN_EXCLUDES, openInfo),
       restoreOriginals,
-      () => reapplyFromCache(
+      reapplyFromCache: () => reapplyFromCache(
         textToElements,
         (t) => cache.get(t),
         buildMap,
         (map, originals, rewrites, source, freshSeenEl) => applyRewrites(map, originals, rewrites, source, STATS, CHANGES, freshSeenEl)
-      )
-    );
+      ),
+      onEditSelectors: () => openSelectorEditor({
+        HOST,
+        SELECTORS_GLOBAL,
+        SELECTORS_DOMAIN,
+        EXCLUDE_GLOBAL,
+        EXCLUDE_DOMAIN,
+        DEFAULT_SELECTORS,
+        DEFAULT_EXCLUDES,
+        onSave: async (result) => {
+          const gSel = result.global.selectors;
+          SELECTORS_GLOBAL = gSel.length ? gSel : DEFAULT_SELECTORS.slice();
+          await storage.set(STORAGE_KEYS.SELECTORS, JSON.stringify(SELECTORS_GLOBAL));
+          EXCLUDE_GLOBAL.self = result.global.excludeSelf;
+          EXCLUDE_GLOBAL.ancestors = result.global.excludeAncestors;
+          await storage.set(STORAGE_KEYS.EXCLUDES, JSON.stringify(EXCLUDE_GLOBAL));
+          DOMAIN_SELECTORS[HOST] = result.domain.selectors;
+          await storage.set(STORAGE_KEYS.DOMAIN_SELECTORS, JSON.stringify(DOMAIN_SELECTORS));
+          if (!DOMAIN_EXCLUDES[HOST]) DOMAIN_EXCLUDES[HOST] = { self: [], ancestors: [] };
+          DOMAIN_EXCLUDES[HOST].self = result.domain.excludeSelf;
+          DOMAIN_EXCLUDES[HOST].ancestors = result.domain.excludeAncestors;
+          await storage.set(STORAGE_KEYS.DOMAIN_EXCLUDES, JSON.stringify(DOMAIN_EXCLUDES));
+        }
+      }),
+      onShowIncluded: () => showIncludedElements(SELECTORS, EXCLUDE),
+      onStats: () => showDiffAudit(STATS, CHANGES, cache.cache, API_TOKENS, PRICING, calculateApiCost, escapeHtml, UI_ATTR),
+      onFlushCache: async () => { await cache.clear(); resetAndReindex(); processVisibleNow(); },
+      onStrengthChange: (level) => setTemperature(level),
+      onAutoDetectToggle: (on) => setAutoDetect(on),
+      strengthLevel: TEMPERATURE_LEVEL,
+      autoDetectOn: CFG.autoDetect
+    });
+
+    ensureBadge(badgeOpts());
     attachTargets(document);
     ensureObserver();
 
     const mo = new MutationObserver((muts) => {
-      ensureBadge(
-        DOMAIN_DISABLED,
-        OPTED_OUT,
-        SHOW_BADGE,
-        BADGE_COLLAPSED,
-        BADGE_POS,
-        storage,
-        () => enterInspectionMode(SELECTORS, HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_GLOBAL, EXCLUDE_DOMAIN, EXCLUDE, storage, DOMAIN_SELECTORS, DOMAIN_EXCLUDES, openInfo),
-        restoreOriginals,
-        () => reapplyFromCache(
-          textToElements,
-          (t) => cache.get(t),
-          buildMap,
-          (map, originals, rewrites, source, freshSeenEl) => applyRewrites(map, originals, rewrites, source, STATS, CHANGES, freshSeenEl)
-        )
-      );
+      ensureBadge(badgeOpts());
       for (const m of muts) {
         if (m.addedNodes && m.addedNodes.length) {
           m.addedNodes.forEach(n => {

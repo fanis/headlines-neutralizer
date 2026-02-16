@@ -274,6 +274,160 @@ export function openWelcomeDialog(storage, openEditor, openInfo) {
 }
 
 /**
+ * Tabbed Edit Selectors dialog
+ */
+export function openSelectorEditor({ HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_GLOBAL, EXCLUDE_DOMAIN, DEFAULT_SELECTORS, DEFAULT_EXCLUDES, onSave }) {
+  const host = document.createElement('div');
+  host.setAttribute(UI_ATTR, '');
+  const shadow = host.attachShadow({ mode: 'open' });
+  const style = document.createElement('style');
+  style.textContent = `
+    :host { all: initial; display: block; }
+    .wrap{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.5);
+          display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif}
+    .modal{background:#fff;max-width:720px;width:94%;max-height:90vh;overflow-y:auto;
+           border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.4);padding:0;box-sizing:border-box}
+    .modal-header{display:flex;justify-content:space-between;align-items:center;
+                  padding:16px 20px;border-bottom:1px solid #e0e0e0}
+    .modal-header h3{margin:0;font:700 18px/1.2 system-ui,sans-serif;color:#1a1a1a}
+    .close-btn{background:none;border:none;font-size:22px;cursor:pointer;color:#666;padding:4px 8px;
+               border-radius:4px}
+    .close-btn:hover{background:#f0f0f0}
+    .tabs{display:flex;border-bottom:2px solid #e0e0e0;padding:0 20px}
+    .tab{padding:10px 20px;font:600 13px/1.2 system-ui,sans-serif;color:#666;cursor:pointer;
+         border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-2px;
+         transition:all 0.15s}
+    .tab:hover{color:#1a1a1a}
+    .tab.active{color:#0b3d2c;border-bottom-color:#0b3d2c}
+    .tab-content{display:none;padding:16px 20px}
+    .tab-content.active{display:block}
+    .section-label{font:600 13px/1.2 system-ui,sans-serif;margin:12px 0 4px;color:#444}
+    .section-label:first-child{margin-top:0}
+    textarea{width:100%;resize:vertical;padding:10px;box-sizing:border-box;
+             font:13px/1.4 ui-monospace,Consolas,monospace;border:1px solid #ccc;border-radius:6px}
+    textarea.full{height:160px}
+    textarea.readonly{background:#f5f5f5;color:#666;height:80px}
+    textarea.domain-edit{height:100px}
+    .hint{margin:4px 0 0;color:#888;font:11px/1.3 system-ui,sans-serif}
+    .footer{display:flex;gap:8px;justify-content:flex-end;padding:12px 20px;
+            border-top:1px solid #e0e0e0}
+    .btn{padding:8px 16px;border-radius:8px;border:1px solid #d0d0d0;background:#f6f6f6;
+         cursor:pointer;font:600 13px system-ui,sans-serif}
+    .btn:hover{background:#eee}
+    .btn.save{background:#0b3d2c;color:#fff;border-color:#0b3d2c}
+    .btn.save:hover{background:#07291c}
+    .btn.reset{background:#fff;color:#d32f2f;border-color:#d32f2f}
+    .btn.reset:hover{background:#fef0f0}
+  `;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'wrap';
+  wrap.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Edit Selectors">
+      <div class="modal-header">
+        <h3>Edit Selectors</h3>
+        <button class="close-btn" title="Close">\u00d7</button>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="global">Global</button>
+        <button class="tab" data-tab="domain">${escapeHtml(HOST)}</button>
+      </div>
+      <div class="tab-content active" data-tab="global">
+        <div class="section-label">Target selectors</div>
+        <textarea class="full" id="g-sel" spellcheck="false">${escapeHtml((SELECTORS_GLOBAL || []).join('\n'))}</textarea>
+        <div class="hint">CSS selectors matched on all domains. One per line.</div>
+        <div class="section-label">Exclude elements (self)</div>
+        <textarea class="full" id="g-exs" spellcheck="false">${escapeHtml(((EXCLUDE_GLOBAL || {}).self || []).join('\n'))}</textarea>
+        <div class="hint">Elements matching these selectors are skipped.</div>
+        <div class="section-label">Exclude containers (ancestors)</div>
+        <textarea class="full" id="g-exa" spellcheck="false">${escapeHtml(((EXCLUDE_GLOBAL || {}).ancestors || []).join('\n'))}</textarea>
+        <div class="hint">Elements inside these containers are skipped.</div>
+      </div>
+      <div class="tab-content" data-tab="domain">
+        <div class="section-label">Global target selectors (read-only)</div>
+        <textarea class="readonly" readonly spellcheck="false">${escapeHtml((SELECTORS_GLOBAL || []).join('\n'))}</textarea>
+        <div class="section-label">Domain additions: target selectors</div>
+        <textarea class="domain-edit" id="d-sel" spellcheck="false">${escapeHtml((SELECTORS_DOMAIN || []).join('\n'))}</textarea>
+        <div class="hint">Added to global selectors for ${escapeHtml(HOST)} only.</div>
+        <div class="section-label">Global exclude elements (read-only)</div>
+        <textarea class="readonly" readonly spellcheck="false">${escapeHtml(((EXCLUDE_GLOBAL || {}).self || []).join('\n'))}</textarea>
+        <div class="section-label">Domain additions: exclude elements</div>
+        <textarea class="domain-edit" id="d-exs" spellcheck="false">${escapeHtml(((EXCLUDE_DOMAIN || {}).self || []).join('\n'))}</textarea>
+        <div class="section-label">Global exclude containers (read-only)</div>
+        <textarea class="readonly" readonly spellcheck="false">${escapeHtml(((EXCLUDE_GLOBAL || {}).ancestors || []).join('\n'))}</textarea>
+        <div class="section-label">Domain additions: exclude containers</div>
+        <textarea class="domain-edit" id="d-exa" spellcheck="false">${escapeHtml(((EXCLUDE_DOMAIN || {}).ancestors || []).join('\n'))}</textarea>
+      </div>
+      <div class="footer">
+        <button class="btn reset">Reset Defaults</button>
+        <button class="btn cancel">Cancel</button>
+        <button class="btn save">Save &amp; Reload</button>
+      </div>
+    </div>`;
+
+  shadow.append(style, wrap);
+  document.body.appendChild(host);
+
+  const close = () => host.remove();
+  let activeTab = 'global';
+
+  // Tab switching
+  shadow.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      shadow.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      shadow.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      tab.classList.add('active');
+      activeTab = tab.dataset.tab;
+      shadow.querySelector(`.tab-content[data-tab="${activeTab}"]`).classList.add('active');
+    });
+  });
+
+  // Save
+  shadow.querySelector('.save').addEventListener('click', async () => {
+    const result = {
+      global: {
+        selectors: parseLines(shadow.querySelector('#g-sel').value),
+        excludeSelf: parseLines(shadow.querySelector('#g-exs').value),
+        excludeAncestors: parseLines(shadow.querySelector('#g-exa').value)
+      },
+      domain: {
+        selectors: parseLines(shadow.querySelector('#d-sel').value),
+        excludeSelf: parseLines(shadow.querySelector('#d-exs').value),
+        excludeAncestors: parseLines(shadow.querySelector('#d-exa').value)
+      }
+    };
+    await onSave?.(result);
+    close();
+    location.reload();
+  });
+
+  // Reset
+  shadow.querySelector('.reset').addEventListener('click', () => {
+    if (activeTab === 'global') {
+      shadow.querySelector('#g-sel').value = (DEFAULT_SELECTORS || []).join('\n');
+      shadow.querySelector('#g-exs').value = ((DEFAULT_EXCLUDES || {}).self || []).join('\n');
+      shadow.querySelector('#g-exa').value = ((DEFAULT_EXCLUDES || {}).ancestors || []).join('\n');
+    } else {
+      shadow.querySelector('#d-sel').value = '';
+      shadow.querySelector('#d-exs').value = '';
+      shadow.querySelector('#d-exa').value = '';
+    }
+  });
+
+  // Close handlers
+  shadow.querySelector('.cancel').addEventListener('click', close);
+  shadow.querySelector('.close-btn').addEventListener('click', close);
+  wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
+  shadow.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); shadow.querySelector('.save').click(); }
+  });
+
+  wrap.setAttribute('tabindex', '-1');
+  wrap.focus();
+}
+
+/**
  * Show temperature selection dialog
  */
 export function openTemperatureDialog(storage, TEMPERATURE_LEVEL, setTemperature) {

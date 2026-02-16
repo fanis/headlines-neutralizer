@@ -10,6 +10,7 @@ import { isExcluded } from './dom.js';
 
 let inspectionOverlay = null;
 let inspectedElement = null;
+let includedState = null;
 
 /**
  * Find the most specific/deepest meaningful element at coordinates
@@ -170,6 +171,91 @@ export function exitInspectionMode() {
   message.remove();
 
   inspectionOverlay = null;
+}
+
+/**
+ * Show included elements with colored highlights
+ */
+export function showIncludedElements(SELECTORS, EXCLUDE) {
+  if (includedState) {
+    exitIncludedElements();
+    return;
+  }
+
+  const saved = [];
+  let includedCount = 0;
+  let excludedCount = 0;
+  let autoCount = 0;
+
+  // Manual selector matches
+  const selectorStr = compiledSelectors(SELECTORS);
+  let manualEls = [];
+  if (selectorStr) {
+    try { manualEls = [...document.querySelectorAll(selectorStr)]; } catch {}
+  }
+  const manualSet = new Set(manualEls);
+
+  for (const el of manualEls) {
+    if (el.closest(`[${UI_ATTR}]`)) continue;
+    const excluded = isExcluded(el, EXCLUDE);
+    const color = excluded ? '#ea4335' : '#34a853';
+    saved.push({ el, boxShadow: el.style.boxShadow });
+    el.style.boxShadow = `inset 0 0 0 2px ${color}`;
+    if (excluded) excludedCount++; else includedCount++;
+  }
+
+  // Auto-detected candidates (if autoDetect is on)
+  if (CFG.autoDetect) {
+    const seedSets = [
+      document.querySelectorAll('h1, h2, h3, h4, [role="heading"], [aria-level], [itemprop="headline"]'),
+      document.querySelectorAll('.lead, .deck, .standfirst, .subhead, .kicker, .teaser, .title, .headline'),
+      document.querySelectorAll(`${CARD_SELECTOR} h1, ${CARD_SELECTOR} h2, ${CARD_SELECTOR} h3, ${CARD_SELECTOR} a`)
+    ];
+    const seen = new Set(manualEls);
+    for (const list of seedSets) {
+      for (const el of list) {
+        if (!el || seen.has(el) || el.closest(`[${UI_ATTR}]`)) continue;
+        seen.add(el);
+        const excluded = isExcluded(el, EXCLUDE);
+        if (!excluded && !manualSet.has(el)) {
+          saved.push({ el, boxShadow: el.style.boxShadow });
+          el.style.boxShadow = 'inset 0 0 0 2px #1a73e8';
+          autoCount++;
+        }
+      }
+    }
+  }
+
+  // Banner
+  const banner = document.createElement('div');
+  banner.className = 'neutralizer-included-banner';
+  banner.setAttribute(UI_ATTR, '');
+  const parts = [`${includedCount} included`, `${excludedCount} excluded`];
+  if (autoCount > 0) parts.push(`${autoCount} auto-detected`);
+  banner.textContent = `${parts.join(', ')}. ESC or click to exit.`;
+  document.body.appendChild(banner);
+
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); exitIncludedElements(); } };
+  const onBannerClick = () => exitIncludedElements();
+  document.addEventListener('keydown', onKey);
+  banner.addEventListener('click', onBannerClick);
+
+  includedState = { saved, banner, onKey, onBannerClick };
+}
+
+/**
+ * Exit included elements highlight mode
+ */
+export function exitIncludedElements() {
+  if (!includedState) return;
+  const { saved, banner, onKey, onBannerClick } = includedState;
+  for (const { el, boxShadow } of saved) {
+    el.style.boxShadow = boxShadow;
+  }
+  document.removeEventListener('keydown', onKey);
+  banner.removeEventListener('click', onBannerClick);
+  banner.remove();
+  includedState = null;
 }
 
 /**

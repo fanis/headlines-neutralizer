@@ -35,9 +35,9 @@ import { HeadlineCache } from './modules/cache.js';
 import { domainPatternToRegex, listMatchesHost, compiledSelectors } from './modules/selectors.js';
 import { initApiTracking, rewriteBatch, resetApiTokens, updatePricing, calculateApiCost, API_TOKENS, PRICING } from './modules/api.js';
 import { ensureHighlightCSS, isExcluded, findTextHost, getCandidateElements, applyRewrites, restoreOriginals } from './modules/dom.js';
-import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openTemperatureDialog, openModelSelectionDialog, showLongHeadlineDialog, showDiffAudit } from './modules/settings.js';
+import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openTemperatureDialog, openModelSelectionDialog, showLongHeadlineDialog, showDiffAudit, openSelectorEditor } from './modules/settings.js';
 import { ensureBadge, updateBadgeCounts, reapplyFromCache } from './modules/badge.js';
-import { enterInspectionMode } from './modules/inspection.js';
+import { enterInspectionMode, showIncludedElements, exitIncludedElements } from './modules/inspection.js';
 
 (async () => {
   'use strict';
@@ -312,7 +312,6 @@ import { enterInspectionMode } from './modules/inspection.js';
   }
 
   // Menu commands
-  GM_registerMenuCommand?.('--- Configuration ---', () => {});
   GM_registerMenuCommand?.('Set / Validate OpenAI API key', async () => {
     const current = await storage.get(STORAGE_KEYS.OPENAI_KEY, '');
     openEditor({
@@ -331,96 +330,6 @@ import { enterInspectionMode } from './modules/inspection.js';
     });
   });
   GM_registerMenuCommand?.(`AI model (${MODEL_OPTIONS[CFG.model]?.name || CFG.model})`, () => openModelSelectionDialog(storage, CFG.model, setModel));
-
-  GM_registerMenuCommand?.('Edit GLOBAL target selectors', () => {
-    openEditor({
-      title: 'Global target selectors (all domains)',
-      mode: 'list',
-      initial: SELECTORS_GLOBAL,
-      hint: 'One CSS selector per line (e.g., h1, h2, h3, .lead). Applied to all domains.',
-      onSave: async (lines) => {
-        const clean = lines.filter(Boolean).map(s => s.trim()).filter(Boolean);
-        SELECTORS_GLOBAL = clean.length ? clean : DEFAULT_SELECTORS.slice();
-        await storage.set(STORAGE_KEYS.SELECTORS, JSON.stringify(SELECTORS_GLOBAL));
-        location.reload();
-      }
-    });
-  });
-
-  GM_registerMenuCommand?.('Edit GLOBAL excludes: elements (self)', () => {
-    openEditor({
-      title: 'Global excluded elements (all domains)',
-      mode: 'list',
-      initial: EXCLUDE_GLOBAL.self || [],
-      hint: 'One CSS selector per line (e.g., .sponsored, .ad-title). Applied to all domains.',
-      onSave: async (lines) => {
-        EXCLUDE_GLOBAL.self = lines;
-        await storage.set(STORAGE_KEYS.EXCLUDES, JSON.stringify(EXCLUDE_GLOBAL));
-        location.reload();
-      }
-    });
-  });
-
-  GM_registerMenuCommand?.('Edit GLOBAL excludes: containers (ancestors)', () => {
-    openEditor({
-      title: 'Global excluded containers (all domains)',
-      mode: 'list',
-      initial: EXCLUDE_GLOBAL.ancestors || [],
-      hint: 'One per line (e.g., header, footer, nav, aside). Applied to all domains.',
-      onSave: async (lines) => {
-        EXCLUDE_GLOBAL.ancestors = lines;
-        await storage.set(STORAGE_KEYS.EXCLUDES, JSON.stringify(EXCLUDE_GLOBAL));
-        location.reload();
-      }
-    });
-  });
-
-  GM_registerMenuCommand?.(`Edit DOMAIN additions: target selectors (${HOST})`, () => {
-    openEditor({
-      title: `Domain-specific target selectors for ${HOST}`,
-      mode: 'domain',
-      initial: SELECTORS_DOMAIN,
-      globalItems: SELECTORS_GLOBAL,
-      hint: 'Domain-specific selectors are added to global ones. Edit only the bottom section.',
-      onSave: async (lines) => {
-        DOMAIN_SELECTORS[HOST] = lines;
-        await storage.set(STORAGE_KEYS.DOMAIN_SELECTORS, JSON.stringify(DOMAIN_SELECTORS));
-        location.reload();
-      }
-    });
-  });
-
-  GM_registerMenuCommand?.(`Edit DOMAIN additions: excludes elements (${HOST})`, () => {
-    openEditor({
-      title: `Domain-specific excluded elements for ${HOST}`,
-      mode: 'domain',
-      initial: EXCLUDE_DOMAIN.self || [],
-      globalItems: EXCLUDE_GLOBAL.self || [],
-      hint: 'Domain-specific excludes are added to global ones. Edit only the bottom section.',
-      onSave: async (lines) => {
-        if (!DOMAIN_EXCLUDES[HOST]) DOMAIN_EXCLUDES[HOST] = { self: [], ancestors: [] };
-        DOMAIN_EXCLUDES[HOST].self = lines;
-        await storage.set(STORAGE_KEYS.DOMAIN_EXCLUDES, JSON.stringify(DOMAIN_EXCLUDES));
-        location.reload();
-      }
-    });
-  });
-
-  GM_registerMenuCommand?.(`Edit DOMAIN additions: excludes containers (${HOST})`, () => {
-    openEditor({
-      title: `Domain-specific excluded containers for ${HOST}`,
-      mode: 'domain',
-      initial: EXCLUDE_DOMAIN.ancestors || [],
-      globalItems: EXCLUDE_GLOBAL.ancestors || [],
-      hint: 'Domain-specific excludes are added to global ones. Edit only the bottom section.',
-      onSave: async (lines) => {
-        if (!DOMAIN_EXCLUDES[HOST]) DOMAIN_EXCLUDES[HOST] = { self: [], ancestors: [] };
-        DOMAIN_EXCLUDES[HOST].ancestors = lines;
-        await storage.set(STORAGE_KEYS.DOMAIN_EXCLUDES, JSON.stringify(DOMAIN_EXCLUDES));
-        location.reload();
-      }
-    });
-  });
 
   GM_registerMenuCommand?.('--- Domain Controls ---', () => {});
   GM_registerMenuCommand?.(
@@ -459,10 +368,6 @@ import { enterInspectionMode } from './modules/inspection.js';
   GM_registerMenuCommand?.(`Toggle DEBUG logs (${CFG.DEBUG ? 'ON' : 'OFF'})`, async () => { await setDebug(!CFG.DEBUG); });
   GM_registerMenuCommand?.(`Toggle badge (${SHOW_BADGE ? 'ON' : 'OFF'})`, async () => { await setShowBadge(!SHOW_BADGE); });
 
-  GM_registerMenuCommand?.('--- Actions ---', () => {});
-  GM_registerMenuCommand?.('Show stats & changes (diff audit)', () => showDiffAudit(STATS, CHANGES, cache.cache, API_TOKENS, PRICING, calculateApiCost, escapeHtml, UI_ATTR));
-  GM_registerMenuCommand?.('Process visible now', () => { processVisibleNow(); });
-  GM_registerMenuCommand?.('Flush headline cache & rerun', async () => { await cache.clear(); resetAndReindex(); processVisibleNow(); });
   if (LONG_HEADLINE_EXCEPTIONS[HOST]) {
     GM_registerMenuCommand?.(`Clear long headline exception (${HOST})`, async () => {
       if (confirm(`Clear the long headline exception for ${HOST}?\n\nYou'll be prompted again if selectors match text longer than ${CFG.sanityCheckLen} characters.`)) {
@@ -472,7 +377,6 @@ import { enterInspectionMode } from './modules/inspection.js';
       }
     });
   }
-  GM_registerMenuCommand?.('Reset stats counters', () => { STATS.total = STATS.live = STATS.cache = STATS.batches = 0; CHANGES.length = 0; updateBadgeCounts(); });
   GM_registerMenuCommand?.('Reset API usage stats', async () => { await resetApiTokens(storage); openInfo('API usage stats reset. Token counters and cost tracking cleared.'); });
 
   // Bootstrap
@@ -504,42 +408,56 @@ import { enterInspectionMode } from './modules/inspection.js';
   }
 
   ensureHighlightCSS();
-  ensureBadge(
-    DOMAIN_DISABLED,
-    OPTED_OUT,
-    SHOW_BADGE,
-    BADGE_COLLAPSED,
-    BADGE_POS,
-    storage,
-    () => enterInspectionMode(SELECTORS, HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_GLOBAL, EXCLUDE_DOMAIN, EXCLUDE, storage, DOMAIN_SELECTORS, DOMAIN_EXCLUDES, openInfo),
+
+  // Badge options object (shared between bootstrap and MutationObserver)
+  const badgeOpts = () => ({
+    DOMAIN_DISABLED, OPTED_OUT, SHOW_BADGE, BADGE_COLLAPSED, BADGE_POS, storage,
+    onInspect: () => enterInspectionMode(SELECTORS, HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_GLOBAL, EXCLUDE_DOMAIN, EXCLUDE, storage, DOMAIN_SELECTORS, DOMAIN_EXCLUDES, openInfo),
     restoreOriginals,
-    () => reapplyFromCache(
+    reapplyFromCache: () => reapplyFromCache(
       textToElements,
       (t) => cache.get(t),
       buildMap,
       (map, originals, rewrites, source, freshSeenEl) => applyRewrites(map, originals, rewrites, source, STATS, CHANGES, freshSeenEl, updateBadgeCounts)
-    )
-  );
+    ),
+    onEditSelectors: () => openSelectorEditor({
+      HOST,
+      SELECTORS_GLOBAL,
+      SELECTORS_DOMAIN,
+      EXCLUDE_GLOBAL,
+      EXCLUDE_DOMAIN,
+      DEFAULT_SELECTORS,
+      DEFAULT_EXCLUDES,
+      onSave: async (result) => {
+        const gSel = result.global.selectors;
+        SELECTORS_GLOBAL = gSel.length ? gSel : DEFAULT_SELECTORS.slice();
+        await storage.set(STORAGE_KEYS.SELECTORS, JSON.stringify(SELECTORS_GLOBAL));
+        EXCLUDE_GLOBAL.self = result.global.excludeSelf;
+        EXCLUDE_GLOBAL.ancestors = result.global.excludeAncestors;
+        await storage.set(STORAGE_KEYS.EXCLUDES, JSON.stringify(EXCLUDE_GLOBAL));
+        DOMAIN_SELECTORS[HOST] = result.domain.selectors;
+        await storage.set(STORAGE_KEYS.DOMAIN_SELECTORS, JSON.stringify(DOMAIN_SELECTORS));
+        if (!DOMAIN_EXCLUDES[HOST]) DOMAIN_EXCLUDES[HOST] = { self: [], ancestors: [] };
+        DOMAIN_EXCLUDES[HOST].self = result.domain.excludeSelf;
+        DOMAIN_EXCLUDES[HOST].ancestors = result.domain.excludeAncestors;
+        await storage.set(STORAGE_KEYS.DOMAIN_EXCLUDES, JSON.stringify(DOMAIN_EXCLUDES));
+      }
+    }),
+    onShowIncluded: () => showIncludedElements(SELECTORS, EXCLUDE),
+    onStats: () => showDiffAudit(STATS, CHANGES, cache.cache, API_TOKENS, PRICING, calculateApiCost, escapeHtml, UI_ATTR),
+    onFlushCache: async () => { await cache.clear(); resetAndReindex(); processVisibleNow(); },
+    onStrengthChange: (level) => setTemperature(level),
+    onAutoDetectToggle: (on) => setAutoDetect(on),
+    strengthLevel: TEMPERATURE_LEVEL,
+    autoDetectOn: CFG.autoDetect
+  });
+
+  ensureBadge(badgeOpts());
   attachTargets(document);
   ensureObserver();
 
   const mo = new MutationObserver((muts) => {
-    ensureBadge(
-      DOMAIN_DISABLED,
-      OPTED_OUT,
-      SHOW_BADGE,
-      BADGE_COLLAPSED,
-      BADGE_POS,
-      storage,
-      () => enterInspectionMode(SELECTORS, HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_GLOBAL, EXCLUDE_DOMAIN, EXCLUDE, storage, DOMAIN_SELECTORS, DOMAIN_EXCLUDES, openInfo),
-      restoreOriginals,
-      () => reapplyFromCache(
-        textToElements,
-        (t) => cache.get(t),
-        buildMap,
-        (map, originals, rewrites, source, freshSeenEl) => applyRewrites(map, originals, rewrites, source, STATS, CHANGES, freshSeenEl, updateBadgeCounts)
-      )
-    );
+    ensureBadge(badgeOpts());
     for (const m of muts) {
       if (m.addedNodes && m.addedNodes.length) {
         m.addedNodes.forEach(n => {

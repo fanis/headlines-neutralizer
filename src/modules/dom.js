@@ -27,7 +27,7 @@ export function ensureHighlightCSS() {
       border: 1px solid #79d4b0 !important; padding: 0 !important; border-radius: 10px !important;
       box-shadow: 0 6px 22px rgba(0,0,0,.18) !important;
       display: flex !important; flex-direction: column !important; gap: 0 !important;
-      box-sizing: border-box !important; width: max-content !important; min-width: 120px !important;
+      box-sizing: border-box !important; width: max-content !important; min-width: 90px !important;
       margin: 0 !important; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
       user-select: none !important; }
     .neutralizer-badge.neutralizer-collapsed { right: 0 !important; left: auto !important;
@@ -36,32 +36,100 @@ export function ensureHighlightCSS() {
     .neutralizer-badge.neutralizer-dragging { transition: none !important; cursor: grabbing !important; }
     .neutralizer-badge .badge-handle { position: absolute !important; left: -28px !important; top: 50% !important;
       transform: translateY(-50%) !important; width: 28px !important; height: 56px !important;
-      background: linear-gradient(90deg, #d4f8e8 0%, #c9f6e1 100%) !important; border: 1px solid #79d4b0 !important; border-right: none !important;
+      background: linear-gradient(90deg, #d4f8e8 0%, #c9f6e1 100%) !important; border: 1px solid #79d4b0 !important;
       border-radius: 8px 0 0 8px !important; cursor: pointer !important;
       display: flex !important; align-items: center !important; justify-content: center !important;
       font-size: 14px !important; color: #0b3d2c !important; user-select: none !important;
-      box-shadow: -3px 0 12px rgba(0,0,0,.12) !important; transition: all 0.2s ease !important; }
-    .neutralizer-badge .badge-handle:hover { left: -30px !important; box-shadow: -4px 0 16px rgba(0,0,0,.18) !important; }
+      box-shadow: -3px 0 12px rgba(0,0,0,.12) !important; transition: all 0.15s ease !important; }
+    .neutralizer-badge .badge-handle:hover { left: -31px !important; width: 31px !important;
+      box-shadow: -4px 0 16px rgba(0,0,0,.18) !important; }
     .neutralizer-badge .badge-header { background: linear-gradient(135deg, #2d6a54 0%, #0b3d2c 100%) !important;
-      color: #fff !important; padding: 6px 10px !important; font-size: 10px !important;
+      color: #fff !important; padding: 4px 8px !important; font-size: 9px !important;
       font-weight: 600 !important; text-align: center !important; cursor: grab !important;
       user-select: none !important; border-radius: 9px 9px 0 0 !important;
-      letter-spacing: 0.3px !important; }
+      letter-spacing: 0.3px !important; line-height: 1.3 !important; white-space: pre-line !important; }
     .neutralizer-badge .badge-header:active { cursor: grabbing !important; }
     .neutralizer-badge .badge-content { display: flex !important; flex-direction: column !important;
-      gap: 6px !important; padding: 8px 10px !important; }
+      gap: 4px !important; padding: 6px 8px !important; }
     .neutralizer-badge * { box-sizing: border-box !important; }
     .neutralizer-badge .neutralizer-row { display: flex !important; gap: 8px !important; align-items: center !important;
       justify-content: center !important; margin: 0 !important; padding: 0 !important; width: 100%; }
-    .neutralizer-badge .neutralizer-btn { cursor: pointer !important; padding: 6px 10px !important; border-radius: 8px !important;
+    .neutralizer-badge .neutralizer-btn { cursor: pointer !important; padding: 5px 8px !important; border-radius: 6px !important;
       border: 1px solid #79d4b0 !important; background: #fff !important; box-sizing: border-box !important;
       white-space: nowrap !important; font-family: system-ui, sans-serif !important;
-      font-size: 12px !important; line-height: 1.2 !important; color: #0b3d2c !important;
-      margin: 0 !important; min-width: 0 !important; width: auto !important; }
+      font-size: 11px !important; line-height: 1.2 !important; color: #0b3d2c !important;
+      margin: 0 !important; min-width: 0 !important; width: 100% !important; }
     .neutralizer-badge .neutralizer-btn.neutralizer-primary { background: #0b3d2c !important; color: #fff !important;
       border-color: #0b3d2c !important; }
     .neutralizer-badge .neutralizer-btn:disabled { opacity: 0.6 !important; cursor: not-allowed !important; }
     .neutralizer-badge .neutralizer-small { font-size: 11px !important; opacity: .9 !important; }
+
+    /* Status row */
+    .neutralizer-badge .neutralizer-status-row { display: flex !important; align-items: center !important;
+      justify-content: space-between !important; gap: 6px !important; margin: 0 !important;
+      padding: 0 !important; width: 100% !important; }
+    .neutralizer-badge .neutralizer-status { font: 10px/1.2 system-ui, sans-serif !important;
+      color: #666 !important; letter-spacing: 0.2px !important; }
+
+    /* Gear icon button */
+    .neutralizer-badge .neutralizer-gear-btn { background: none !important; border: none !important;
+      cursor: pointer !important; padding: 2px 4px !important; border-radius: 4px !important;
+      font-size: 14px !important; line-height: 1 !important; color: #0b3d2c !important;
+      margin: 0 !important; min-width: 0 !important; width: auto !important;
+      transition: background 0.15s ease !important; display: flex !important;
+      align-items: center !important; justify-content: center !important; }
+    .neutralizer-badge .neutralizer-gear-btn:hover { background: rgba(11,61,44,0.1) !important; }
+
+    /* Popover container */
+    .neutralizer-badge .neutralizer-popover { position: absolute !important; right: 0 !important;
+      min-width: 200px !important;
+      background: #fff !important; border: 1px solid #d0d0d0 !important; border-radius: 10px !important;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.2) !important; padding: 6px 0 !important;
+      display: none !important; z-index: 2147483647 !important;
+      font: 12px/1.4 system-ui, sans-serif !important; color: #1a1a1a !important; }
+    .neutralizer-badge .neutralizer-popover.neutralizer-popover-open { display: block !important; }
+
+    /* Popover menu item button */
+    .neutralizer-badge .neutralizer-popover-item { display: block !important; width: 100% !important;
+      padding: 8px 14px !important; border: none !important; background: none !important;
+      text-align: left !important; cursor: pointer !important; font: 13px/1.3 system-ui, sans-serif !important;
+      color: #1a1a1a !important; white-space: nowrap !important; box-sizing: border-box !important;
+      margin: 0 !important; border-radius: 0 !important; }
+    .neutralizer-badge .neutralizer-popover-item:hover { background: #f0f0f0 !important; }
+
+    /* Popover separator */
+    .neutralizer-badge .neutralizer-popover-sep { border: none !important;
+      border-top: 1px solid #e0e0e0 !important; margin: 4px 0 !important; padding: 0 !important; }
+
+    /* Settings group (label + segmented row) */
+    .neutralizer-badge .neutralizer-popover-group { padding: 6px 14px !important; margin: 0 !important; }
+    .neutralizer-badge .neutralizer-popover-label { font: 600 11px/1.2 system-ui, sans-serif !important;
+      color: #666 !important; margin: 0 0 4px !important; text-transform: uppercase !important;
+      letter-spacing: 0.3px !important; display: block !important; }
+
+    /* Segmented control row */
+    .neutralizer-badge .neutralizer-popover-seg { display: flex !important; gap: 0 !important;
+      border: 1px solid #79d4b0 !important; border-radius: 6px !important; overflow: hidden !important;
+      margin: 0 !important; }
+
+    /* Segmented option button */
+    .neutralizer-badge .neutralizer-popover-option { flex: 1 !important; padding: 5px 8px !important;
+      border: none !important; border-right: 1px solid #79d4b0 !important;
+      background: #fff !important; cursor: pointer !important;
+      font: 11px/1.2 system-ui, sans-serif !important; color: #0b3d2c !important;
+      text-align: center !important; white-space: nowrap !important; margin: 0 !important;
+      border-radius: 0 !important; min-width: 0 !important; }
+    .neutralizer-badge .neutralizer-popover-option:last-child { border-right: none !important; }
+    .neutralizer-badge .neutralizer-popover-option:hover { background: #e8f5e9 !important; }
+    .neutralizer-badge .neutralizer-popover-option.neutralizer-popover-active {
+      background: #0b3d2c !important; color: #fff !important; }
+
+    /* Show Included Elements overlay banner */
+    .neutralizer-included-banner { position: fixed !important; top: 0 !important; left: 0 !important;
+      right: 0 !important; z-index: 2147483647 !important; padding: 10px 20px !important;
+      background: #0b3d2c !important; color: #fff !important;
+      font: 600 14px/1.4 system-ui, sans-serif !important; text-align: center !important;
+      cursor: pointer !important; box-shadow: 0 4px 16px rgba(0,0,0,0.25) !important; }
   `;
   document.head.appendChild(style);
 }

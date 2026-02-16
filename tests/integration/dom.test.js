@@ -94,17 +94,24 @@ describe('DOM Manipulation', () => {
       badge.className = 'neutralizer-badge';
       badge.setAttribute('data-neutralizer-ui', '');
       badge.innerHTML = `
-        <div class="badge-header">NEUTRALIZE HEADLINES</div>
+        <div class="badge-header">Headlines\nNeutralizer</div>
         <div class="badge-content">
-          <button class="btn action">H: neutral</button>
+          <button class="neutralizer-btn neutralizer-action">neutral</button>
+          <div class="neutralizer-status-row">
+            <span class="neutralizer-status">Ready</span>
+            <button class="neutralizer-gear-btn">\u2699</button>
+          </div>
         </div>
+        <div class="neutralizer-popover"></div>
       `;
       document.body.appendChild(badge);
 
       const created = document.querySelector('.neutralizer-badge');
       expect(created).toBeDefined();
-      expect(created.querySelector('.badge-header').textContent).toBe('NEUTRALIZE HEADLINES');
-      expect(created.querySelector('.btn.action')).toBeDefined();
+      expect(created.querySelector('.badge-header').textContent).toContain('Headlines');
+      expect(created.querySelector('.neutralizer-action')).toBeDefined();
+      expect(created.querySelector('.neutralizer-gear-btn')).toBeDefined();
+      expect(created.querySelector('.neutralizer-popover')).toBeDefined();
     });
 
     it('should position badge correctly', () => {
