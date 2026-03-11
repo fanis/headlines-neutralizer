@@ -108,6 +108,8 @@
   - Click "Validate" to test your key, then "Save"
   - The script will automatically enable itself on all websites
 
+  ![API key dialog](screenshots/api-key-dialog.jpg)
+
 3. You're done! The script will now run automatically on websites.
 
   ---
@@ -227,10 +229,14 @@ For detailed documentation:
 
   Access the menu through your userscript manager icon:
 
+  ![Userscript manager menu](screenshots/userscript-menu.jpg)
+
 ###  Configuration
 
   - **Set / Validate OpenAI API key** - Add or test your API key
-  - **AI model (GPT-4.1 Nano Priority)** - Select from 5 OpenAI models with different price/quality tradeoffs
+  - **AI model** - Select from 5 OpenAI models with different price/quality tradeoffs
+
+  ![AI Model Selection dialog](screenshots/model-selection.jpg)
     - GPT-5 Nano - $0.05/$0.40 per 1M tokens (cheapest)
     - GPT-5 Mini - $0.25/$2.00 per 1M tokens
     - GPT-4.1 Nano Priority (recommended) - $0.10/$0.40 per 1M tokens (fast)
@@ -266,15 +272,9 @@ For detailed documentation:
 
 ###  Toggles
 
-  - **Neutralization strength** - Adjust how aggressively headlines are rewritten
-    - Opens a dialog with 5 levels to choose from:
-      - **Minimal (0.0)** - Most conservative, preserves original meaning closely
-      - **Light (0.1)** - Subtle neutralization with minimal changes
-      - **Moderate (0.2)** - Balanced approach (default)
-      - **Strong (0.35)** - More aggressive rewriting
-      - **Maximum (0.5)** - Very aggressive neutralization
-    - Current level is shown in menu and highlighted in dialog
-    - Setting persists across sessions
+  - **Neutralization strength** - Adjust how aggressively headlines are rewritten (5 levels from Minimal to Maximum)
+
+  ![Neutralization Strength dialog](screenshots/neutralization-strength.jpg)
   - Toggle auto-detect (ON/OFF) - Enable/disable automatic headline detection
     - Turn OFF to rely only on manual CSS selectors
   - Toggle DEBUG logs (ON/OFF) - Show detailed console logs
