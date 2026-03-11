@@ -2,6 +2,8 @@
 
 > **Latest Version**: 2.4.0 | [See What's New](CHANGELOG.md)
 
+![Original vs neutralized headlines](screenshots/hero.jpg)
+
 ## Table of Contents
 - [What It Does](#what-it-does)
 - [Features](#features)
@@ -210,13 +212,13 @@ For detailed documentation:
   **Inspection Mode:**
   - Click the 🔍 Inspect button to activate
   - Click any element on the page to see why it's matched/excluded
-  - Shows detailed diagnostic information:
-    - Element details (tag, classes, ID, CSS selector)
-    - Processing status (matched, not matched, or excluded)
-    - Which selectors match/exclude the element
-    - Auto-detection reasoning
+  - Shows detailed diagnostic information
   - Action buttons to add selectors or remove exclusions
   - Press ESC to exit inspection mode
+
+  ![Inspection Mode - hovering over an element](screenshots/inspection-mode.jpg)
+
+  ![Element Inspection dialog](screenshots/element-inspection-dialog.jpg)
 
   To hide the badge: Use the menu option "Toggle badge (ON/OFF)"
 
@@ -244,6 +246,8 @@ For detailed documentation:
     - Examples: `.sponsored, .ad-title, h4.category`
   - **Edit GLOBAL excludes: containers (ancestors)** - Base container exclusions for all websites
     - Examples: `header, footer, nav, aside`
+
+  ![Edit Selectors dialog](screenshots/edit-selectors.jpg)
 
   **Domain-Specific Additions** (for current domain only):
   - **Edit DOMAIN additions: target selectors** - Additional selectors for this domain
@@ -285,6 +289,8 @@ For detailed documentation:
       - API stats persist and are independent from clearable page stats
     - Displays headline cache size
     - Shows all original → neutralized headline changes on current page
+
+  ![Stats & Changes dialog](screenshots/stats-and-changes.jpg)
   - **Process visible now** - Manually trigger processing of visible headlines
   - **Flush headline cache & rerun** - Clear headline cache and reprocess everything
   - **Reset stats counters** - Reset the count shown in the badge
@@ -377,6 +383,10 @@ For detailed documentation:
   - Default mode - runs on all sites
   - Visit sites you DON'T want affected
   - Menu → "Disable on this domain"
+
+  **Show Included Elements** - Visualize which elements will be processed (green) or excluded.
+
+  ![Show Included Elements](screenshots/show-included-elements.jpg)
 
   ---
 ##  Troubleshooting
