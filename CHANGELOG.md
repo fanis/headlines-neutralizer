@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.4.1] - 2026-04-06
+
+### Fixed
+- **API output truncation on large batches** - `max_output_tokens` was fixed at 1000, insufficient for large headline batches (up to 24). Now scales dynamically with batch size. Truncated responses are detected and automatically retried with smaller batches
+- **Removed misleading 400 error dialog** - JSON parse failures from truncated output no longer show a "Bad request" dialog to the user; logged to console instead
+
 ## [2.4.0] - 2026-02-16
 
 ### Added

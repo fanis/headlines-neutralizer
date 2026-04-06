@@ -199,9 +199,12 @@ export async function rewriteBatch(storage, texts) {
   const modelConfig = MODEL_OPTIONS[CFG.model] || MODEL_OPTIONS['gpt-4.1-nano-priority'];
   const apiModel = modelConfig.apiModel;
 
+  // Scale output tokens to batch size: ~120 tokens per headline, minimum 600
+  const maxOutputTokens = Math.max(600, texts.length * 120);
+
   const bodyObj = {
     model: apiModel,
-    max_output_tokens: 1000,
+    max_output_tokens: maxOutputTokens,
     instructions,
     input: JSON.stringify(safeInputs)
   };
@@ -228,6 +231,12 @@ export async function rewriteBatch(storage, texts) {
     updateApiTokens(storage, 'headlines', payload.usage);
   }
 
+  // Detect truncated output (Responses API sets status to 'incomplete' when max_output_tokens is hit)
+  if (payload.status === 'incomplete') {
+    log('API output truncated (incomplete status), batch too large for token limit');
+    throw Object.assign(new Error('API output truncated'), { status: 'truncated' });
+  }
+
   const outStr = extractOutputText(payload);
   log('API response payload:', JSON.stringify(payload).substring(0, 500));
   log('Extracted output:', outStr ? outStr.substring(0, 200) : 'null');
@@ -243,7 +252,8 @@ export async function rewriteBatch(storage, texts) {
     arr = JSON.parse(cleaned);
   } catch (e) {
     log('JSON parse failed, raw output:', cleaned.substring(0, 300));
-    throw Object.assign(new Error(`Failed to parse API response as JSON: ${e.message}`), { status: 400 });
+    // Likely truncated output - treat as transient, not a user-facing error
+    throw Object.assign(new Error(`Failed to parse API response as JSON: ${e.message}`), { status: 'truncated' });
   }
 
   if (!Array.isArray(arr)) throw Object.assign(new Error('API did not return a JSON array'), { status: 400 });

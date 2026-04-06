@@ -705,7 +705,7 @@ describe('API Integration', () => {
       expect(body.service_tier).toBe('priority');
       expect(body.temperature).toBe(0.2); // Non-GPT-5 models use temperature
       expect(body.reasoning).toBeUndefined(); // Only GPT-5 models use reasoning
-      expect(body.max_output_tokens).toBe(1000);
+      expect(body.max_output_tokens).toBe(600); // Math.max(600, 1 * 120) for single headline
       expect(body.instructions).toContain('neutrally');
       expect(body.input).toBe('["Test headline"]');
     });

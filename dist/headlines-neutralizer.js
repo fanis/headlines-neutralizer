@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      2.4.0
+// @version      2.4.1
 // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -790,9 +790,12 @@
     const modelConfig = MODEL_OPTIONS[CFG.model] || MODEL_OPTIONS['gpt-4.1-nano-priority'];
     const apiModel = modelConfig.apiModel;
 
+    // Scale output tokens to batch size: ~120 tokens per headline, minimum 600
+    const maxOutputTokens = Math.max(600, texts.length * 120);
+
     const bodyObj = {
       model: apiModel,
-      max_output_tokens: 1000,
+      max_output_tokens: maxOutputTokens,
       instructions,
       input: JSON.stringify(safeInputs)
     };
@@ -819,6 +822,12 @@
       updateApiTokens(storage, 'headlines', payload.usage);
     }
 
+    // Detect truncated output (Responses API sets status to 'incomplete' when max_output_tokens is hit)
+    if (payload.status === 'incomplete') {
+      log('API output truncated (incomplete status), batch too large for token limit');
+      throw Object.assign(new Error('API output truncated'), { status: 'truncated' });
+    }
+
     const outStr = extractOutputText(payload);
     log('API response payload:', JSON.stringify(payload).substring(0, 500));
     log('Extracted output:', outStr ? outStr.substring(0, 200) : 'null');
@@ -834,7 +843,8 @@
       arr = JSON.parse(cleaned);
     } catch (e) {
       log('JSON parse failed, raw output:', cleaned.substring(0, 300));
-      throw Object.assign(new Error(`Failed to parse API response as JSON: ${e.message}`), { status: 400 });
+      // Likely truncated output - treat as transient, not a user-facing error
+      throw Object.assign(new Error(`Failed to parse API response as JSON: ${e.message}`), { status: 'truncated' });
     }
 
     if (!Array.isArray(arr)) throw Object.assign(new Error('API did not return a JSON array'), { status: 400 });
@@ -3039,7 +3049,7 @@
   // @namespace    https://fanis.dev/userscripts
   // @author       Fanis Hatzidakis
   // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-  // @version      2.4.0
+  // @version      2.4.1
   // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
   // @match        *://*/*
   // @exclude      about:*
@@ -3245,9 +3255,18 @@
         STATS.batches++;
         log(`[stats] batches=${STATS.batches} total=${STATS.total} (live=${STATS.live}, cache=${STATS.cache})`);
       } catch (e) {
-        console.error('error:', e);
-        if (e.body) log('API error body:', e.body.substring(0, 500));
-        friendlyApiError(e);
+        if (e.status === 'truncated') {
+          // Output was truncated - re-queue items and they'll be sent in smaller batches next flush
+          log('Output truncated, re-queuing', toSend.length, 'headlines for retry in smaller batches');
+          const half = Math.ceil(toSend.length / 2);
+          for (const t of toSend) pending.add(t);
+          // Temporarily reduce maxBatch to avoid hitting the limit again
+          if (CFG.maxBatch > 4) CFG.maxBatch = Math.min(CFG.maxBatch, half);
+        } else {
+          console.error('[neutralizer-ai] error:', e);
+          if (e.body) log('API error body:', e.body.substring(0, 500));
+          friendlyApiError(e);
+        }
       }
       if (pending.size) scheduleFlush();
     }
@@ -3259,7 +3278,7 @@
       if (shownErrors.has(s)) return;          // show each error type at most once per page load
       shownErrors.add(s);
       if (s === 429) { openInfo('Rate limited by API (429). Try again in a minute. You can also lower maxBatch or enable visible-only to reduce burst.'); return; }
-      if (s === 400) { openInfo('Bad request (400). The page may contain text the API could not parse. Try again, or disable auto-detect for this site and use narrower selectors.'); return; }
+      if (s === 400) { log('Bad request (400). The page may contain text the API could not parse.'); return; }
       openInfo(`Unknown error${s ? ' (' + s + ')' : ''}. Check your network or try again.`);
     }
 

@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      2.4.0
+// @version      2.4.1
 // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -227,9 +227,18 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
       STATS.batches++;
       log(`[stats] batches=${STATS.batches} total=${STATS.total} (live=${STATS.live}, cache=${STATS.cache})`);
     } catch (e) {
-      console.error('error:', e);
-      if (e.body) log('API error body:', e.body.substring(0, 500));
-      friendlyApiError(e);
+      if (e.status === 'truncated') {
+        // Output was truncated - re-queue items and they'll be sent in smaller batches next flush
+        log('Output truncated, re-queuing', toSend.length, 'headlines for retry in smaller batches');
+        const half = Math.ceil(toSend.length / 2);
+        for (const t of toSend) pending.add(t);
+        // Temporarily reduce maxBatch to avoid hitting the limit again
+        if (CFG.maxBatch > 4) CFG.maxBatch = Math.min(CFG.maxBatch, half);
+      } else {
+        console.error('[neutralizer-ai] error:', e);
+        if (e.body) log('API error body:', e.body.substring(0, 500));
+        friendlyApiError(e);
+      }
     }
     if (pending.size) scheduleFlush();
   }
@@ -241,7 +250,7 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
     if (shownErrors.has(s)) return;          // show each error type at most once per page load
     shownErrors.add(s);
     if (s === 429) { openInfo('Rate limited by API (429). Try again in a minute. You can also lower maxBatch or enable visible-only to reduce burst.'); return; }
-    if (s === 400) { openInfo('Bad request (400). The page may contain text the API could not parse. Try again, or disable auto-detect for this site and use narrower selectors.'); return; }
+    if (s === 400) { log('Bad request (400). The page may contain text the API could not parse.'); return; }
     openInfo(`Unknown error${s ? ' (' + s + ')' : ''}. Check your network or try again.`);
   }
 
