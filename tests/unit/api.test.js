@@ -11,7 +11,9 @@ import {
   xhrPost,
   xhrGet,
   extractOutputText,
-  rewriteBatch
+  rewriteBatch,
+  parseApiError,
+  isQuotaExhausted
 } from '../../src/modules/api.js';
 
 describe('API Integration', () => {
@@ -448,6 +450,60 @@ describe('API Integration', () => {
     it('should handle empty arrays', () => {
       expect(extractOutputText({ output: [] })).toBe('');
       expect(extractOutputText({ choices: [] })).toBe('');
+    });
+  });
+
+  describe('parseApiError', () => {
+    it('should extract code, type and message from a standard OpenAI error body', () => {
+      const err = {
+        status: 429,
+        body: JSON.stringify({
+          error: {
+            message: 'You exceeded your current quota, please check your plan and billing details.',
+            type: 'insufficient_quota',
+            param: null,
+            code: 'insufficient_quota'
+          }
+        })
+      };
+      const parsed = parseApiError(err);
+      expect(parsed.code).toBe('insufficient_quota');
+      expect(parsed.type).toBe('insufficient_quota');
+      expect(parsed.message).toContain('quota');
+    });
+
+    it('should handle error bodies without an error wrapper', () => {
+      const err = { status: 429, body: JSON.stringify({ code: 'rate_limit_exceeded', type: 'requests', message: 'slow down' }) };
+      const parsed = parseApiError(err);
+      expect(parsed.code).toBe('rate_limit_exceeded');
+      expect(parsed.type).toBe('requests');
+    });
+
+    it('should return empty fields for missing or malformed bodies', () => {
+      expect(parseApiError(undefined)).toEqual({ code: '', type: '', message: '' });
+      expect(parseApiError({ status: 429 })).toEqual({ code: '', type: '', message: '' });
+      expect(parseApiError({ status: 429, body: 'not json' })).toEqual({ code: '', type: '', message: '' });
+    });
+  });
+
+  describe('isQuotaExhausted', () => {
+    it('should be true when error code is insufficient_quota', () => {
+      const err = { status: 429, body: JSON.stringify({ error: { code: 'insufficient_quota', type: 'insufficient_quota' } }) };
+      expect(isQuotaExhausted(err)).toBe(true);
+    });
+
+    it('should be true when only the type is insufficient_quota', () => {
+      const err = { status: 429, body: JSON.stringify({ error: { type: 'insufficient_quota' } }) };
+      expect(isQuotaExhausted(err)).toBe(true);
+    });
+
+    it('should be false for a genuine rate-limit 429', () => {
+      const err = { status: 429, body: JSON.stringify({ error: { code: 'rate_limit_exceeded', type: 'requests' } }) };
+      expect(isQuotaExhausted(err)).toBe(false);
+    });
+
+    it('should be false when no body is present', () => {
+      expect(isQuotaExhausted({ status: 429 })).toBe(false);
     });
   });
 
