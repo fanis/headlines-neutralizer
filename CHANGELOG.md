@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.4.2] - 2026-05-29
+
+### Fixed
+- **Distinguish OpenAI 429 quota vs rate-limit errors** - HTTP 429 is returned for both genuine rate limiting and exhausted credits/quota, but the two were treated identically and showed advice referencing settings not exposed in any UI
+  - Added `parseApiError`/`isQuotaExhausted` helpers that read `error.code`/`type` from the response body (the only way to tell the two 429 cases apart)
+  - `insufficient_quota`: pauses rewriting (`apiHalted`), clears the queue, and shows a billing-focused message pointing at platform.openai.com
+  - `rate_limit_exceeded`: re-queues, shrinks batch, and applies exponential backoff (2s up to 60s, reset on success) instead of suggesting nonexistent toggles
+
 ## [2.4.1] - 2026-04-06
 
 ### Fixed
