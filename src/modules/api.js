@@ -148,6 +148,38 @@ export function xhrGet(url, headers = {}) {
 }
 
 /**
+ * Parse an OpenAI error response body to extract its machine-readable code/type.
+ * OpenAI returns HTTP 429 for both genuine rate limiting (`rate_limit_exceeded`)
+ * and exhausted billing/quota (`insufficient_quota`); the body is the only way
+ * to tell them apart.
+ * Returns { code, type, message } with empty strings when unavailable.
+ */
+export function parseApiError(err) {
+  const out = { code: '', type: '', message: '' };
+  if (!err || !err.body) return out;
+  try {
+    const parsed = JSON.parse(err.body);
+    const e = parsed && parsed.error ? parsed.error : parsed;
+    if (e) {
+      out.code = e.code || '';
+      out.type = e.type || '';
+      out.message = e.message || '';
+    }
+  } catch {}
+  return out;
+}
+
+/**
+ * True when a 429 was caused by exhausted credits/quota rather than burst rate
+ * limiting. These are not transient — retrying will keep failing until the user
+ * fixes their billing, so callers should stop hammering the API.
+ */
+export function isQuotaExhausted(err) {
+  const { code, type } = parseApiError(err);
+  return code === 'insufficient_quota' || type === 'insufficient_quota';
+}
+
+/**
  * Extract output text from API response
  */
 export function extractOutputText(data) {

@@ -739,6 +739,38 @@
   }
 
   /**
+   * Parse an OpenAI error response body to extract its machine-readable code/type.
+   * OpenAI returns HTTP 429 for both genuine rate limiting (`rate_limit_exceeded`)
+   * and exhausted billing/quota (`insufficient_quota`); the body is the only way
+   * to tell them apart.
+   * Returns { code, type, message } with empty strings when unavailable.
+   */
+  function parseApiError(err) {
+    const out = { code: '', type: '', message: '' };
+    if (!err || !err.body) return out;
+    try {
+      const parsed = JSON.parse(err.body);
+      const e = parsed && parsed.error ? parsed.error : parsed;
+      if (e) {
+        out.code = e.code || '';
+        out.type = e.type || '';
+        out.message = e.message || '';
+      }
+    } catch {}
+    return out;
+  }
+
+  /**
+   * True when a 429 was caused by exhausted credits/quota rather than burst rate
+   * limiting. These are not transient — retrying will keep failing until the user
+   * fixes their billing, so callers should stop hammering the API.
+   */
+  function isQuotaExhausted(err) {
+    const { code, type } = parseApiError(err);
+    return code === 'insufficient_quota' || type === 'insufficient_quota';
+  }
+
+  /**
    * Extract output text from API response
    */
   function extractOutputText(data) {
@@ -859,6 +891,8 @@
     calculateApiCost: calculateApiCost,
     extractOutputText: extractOutputText,
     initApiTracking: initApiTracking,
+    isQuotaExhausted: isQuotaExhausted,
+    parseApiError: parseApiError,
     resetApiTokens: resetApiTokens,
     rewriteBatch: rewriteBatch,
     updateApiTokens: updateApiTokens,
@@ -3211,6 +3245,12 @@
     const pending = new Set();
     let flushTimer = null;
     let longHeadlineCheckPending = false;
+    // Set when the API can no longer succeed without user action (e.g. exhausted
+    // credits/quota). Stops further flushes so we don't hammer a failing endpoint.
+    let apiHalted = false;
+    // Exponential backoff (ms) applied to the next flush after a genuine 429.
+    // Reset to 0 on any successful batch.
+    let rateLimitBackoffMs = 0;
 
     function ensureObserver() {
       if (IO || !CFG.visibleOnly) return;
@@ -3233,7 +3273,11 @@
       scheduleFlush();
     }
 
-    function scheduleFlush() { if (!flushTimer) flushTimer = setTimeout(flushPending, CFG.flushDelayMs); }
+    function scheduleFlush() {
+      if (apiHalted || flushTimer) return;
+      const delay = rateLimitBackoffMs || CFG.flushDelayMs;
+      flushTimer = setTimeout(flushPending, delay);
+    }
 
     function buildMap(texts) {
       const map = new Map();
@@ -3242,9 +3286,10 @@
     }
 
     async function flushPending() {
+      flushTimer = null;
+      if (apiHalted) return;
       const toSend = [];
       for (const t of pending) { if (!cache.get(t)) toSend.push(t); pending.delete(t); if (toSend.length === CFG.maxBatch) break; }
-      flushTimer = null;
       if (!toSend.length) return;
 
       try {
@@ -3252,6 +3297,7 @@
         const rewrites = await rewriteBatch(storage, toSend);
         for (let i = 0; i < toSend.length; i++) cache.set(toSend[i], rewrites[i] ?? toSend[i]);
         applyRewrites(buildMap(toSend), toSend, rewrites, 'live', STATS, CHANGES, seenEl, updateBadgeCounts);
+        rateLimitBackoffMs = 0;   // success clears any rate-limit backoff
         STATS.batches++;
         log(`[stats] batches=${STATS.batches} total=${STATS.total} (live=${STATS.live}, cache=${STATS.cache})`);
       } catch (e) {
@@ -3262,6 +3308,16 @@
           for (const t of toSend) pending.add(t);
           // Temporarily reduce maxBatch to avoid hitting the limit again
           if (CFG.maxBatch > 4) CFG.maxBatch = Math.min(CFG.maxBatch, half);
+        } else if (e.status === 429 && !isQuotaExhausted(e)) {
+          // Genuine rate limiting (not exhausted quota): transient. Re-queue, shrink
+          // the batch to reduce burst, and let the existing flush schedule retry.
+          log('Rate limited (429), re-queuing', toSend.length, 'headlines, reducing batch size and backing off');
+          const half = Math.ceil(toSend.length / 2);
+          for (const t of toSend) pending.add(t);
+          if (CFG.maxBatch > 4) CFG.maxBatch = Math.min(CFG.maxBatch, half);
+          // Exponential backoff, starting at 2s and capped at 60s.
+          rateLimitBackoffMs = Math.min(rateLimitBackoffMs ? rateLimitBackoffMs * 2 : 2000, 60000);
+          friendlyApiError(e);
         } else {
           console.error('[neutralizer-ai] error:', e);
           if (e.body) log('API error body:', e.body.substring(0, 500));
@@ -3275,9 +3331,24 @@
     function friendlyApiError(err) {
       const s = err?.status || 0;
       if (s === 401) { openKeyDialog(storage, 'Unauthorized (401). Please enter a valid OpenAI key.', apiKeyDialogShown); return; }
+      if (s === 429) {
+        if (isQuotaExhausted(err)) {
+          // Out of credits / quota exceeded — not transient. Stop trying so we don't
+          // keep firing requests that can only fail until billing is fixed.
+          apiHalted = true;
+          pending.clear();
+          if (shownErrors.has('quota')) return;
+          shownErrors.add('quota');
+          openInfo('OpenAI quota exceeded (429). Your account is out of credits or has hit its billing limit, so rewriting is paused. Add credits or raise your limit at platform.openai.com/account/billing, then reload the page.');
+          return;
+        }
+        if (shownErrors.has(s)) return;        // show each error type at most once per page load
+        shownErrors.add(s);
+        openInfo('Rate limited by OpenAI (429). The script is automatically backing off and will retry shortly — no action needed.');
+        return;
+      }
       if (shownErrors.has(s)) return;          // show each error type at most once per page load
       shownErrors.add(s);
-      if (s === 429) { openInfo('Rate limited by API (429). Try again in a minute. You can also lower maxBatch or enable visible-only to reduce burst.'); return; }
       if (s === 400) { log('Bad request (400). The page may contain text the API could not parse.'); return; }
       openInfo(`Unknown error${s ? ' (' + s + ')' : ''}. Check your network or try again.`);
     }

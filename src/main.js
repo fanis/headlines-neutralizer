@@ -33,7 +33,7 @@ import { log, textTrim, withinLen, isInViewportWithMargin, escapeHtml } from './
 import { Storage } from './modules/storage.js';
 import { HeadlineCache } from './modules/cache.js';
 import { domainPatternToRegex, listMatchesHost, compiledSelectors } from './modules/selectors.js';
-import { initApiTracking, rewriteBatch, resetApiTokens, updatePricing, calculateApiCost, API_TOKENS, PRICING } from './modules/api.js';
+import { initApiTracking, rewriteBatch, resetApiTokens, updatePricing, calculateApiCost, API_TOKENS, PRICING, isQuotaExhausted } from './modules/api.js';
 import { ensureHighlightCSS, isExcluded, findTextHost, getCandidateElements, applyRewrites, restoreOriginals } from './modules/dom.js';
 import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openTemperatureDialog, openModelSelectionDialog, showLongHeadlineDialog, showDiffAudit, openSelectorEditor } from './modules/settings.js';
 import { ensureBadge, updateBadgeCounts, reapplyFromCache } from './modules/badge.js';
@@ -183,6 +183,12 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   const pending = new Set();
   let flushTimer = null;
   let longHeadlineCheckPending = false;
+  // Set when the API can no longer succeed without user action (e.g. exhausted
+  // credits/quota). Stops further flushes so we don't hammer a failing endpoint.
+  let apiHalted = false;
+  // Exponential backoff (ms) applied to the next flush after a genuine 429.
+  // Reset to 0 on any successful batch.
+  let rateLimitBackoffMs = 0;
 
   function ensureObserver() {
     if (IO || !CFG.visibleOnly) return;
@@ -205,7 +211,11 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
     scheduleFlush();
   }
 
-  function scheduleFlush() { if (!flushTimer) flushTimer = setTimeout(flushPending, CFG.flushDelayMs); }
+  function scheduleFlush() {
+    if (apiHalted || flushTimer) return;
+    const delay = rateLimitBackoffMs || CFG.flushDelayMs;
+    flushTimer = setTimeout(flushPending, delay);
+  }
 
   function buildMap(texts) {
     const map = new Map();
@@ -214,9 +224,10 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   }
 
   async function flushPending() {
+    flushTimer = null;
+    if (apiHalted) return;
     const toSend = [];
     for (const t of pending) { if (!cache.get(t)) toSend.push(t); pending.delete(t); if (toSend.length === CFG.maxBatch) break; }
-    flushTimer = null;
     if (!toSend.length) return;
 
     try {
@@ -224,6 +235,7 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
       const rewrites = await rewriteBatch(storage, toSend);
       for (let i = 0; i < toSend.length; i++) cache.set(toSend[i], rewrites[i] ?? toSend[i]);
       applyRewrites(buildMap(toSend), toSend, rewrites, 'live', STATS, CHANGES, seenEl, updateBadgeCounts);
+      rateLimitBackoffMs = 0;   // success clears any rate-limit backoff
       STATS.batches++;
       log(`[stats] batches=${STATS.batches} total=${STATS.total} (live=${STATS.live}, cache=${STATS.cache})`);
     } catch (e) {
@@ -234,6 +246,16 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
         for (const t of toSend) pending.add(t);
         // Temporarily reduce maxBatch to avoid hitting the limit again
         if (CFG.maxBatch > 4) CFG.maxBatch = Math.min(CFG.maxBatch, half);
+      } else if (e.status === 429 && !isQuotaExhausted(e)) {
+        // Genuine rate limiting (not exhausted quota): transient. Re-queue, shrink
+        // the batch to reduce burst, and let the existing flush schedule retry.
+        log('Rate limited (429), re-queuing', toSend.length, 'headlines, reducing batch size and backing off');
+        const half = Math.ceil(toSend.length / 2);
+        for (const t of toSend) pending.add(t);
+        if (CFG.maxBatch > 4) CFG.maxBatch = Math.min(CFG.maxBatch, half);
+        // Exponential backoff, starting at 2s and capped at 60s.
+        rateLimitBackoffMs = Math.min(rateLimitBackoffMs ? rateLimitBackoffMs * 2 : 2000, 60000);
+        friendlyApiError(e);
       } else {
         console.error('[neutralizer-ai] error:', e);
         if (e.body) log('API error body:', e.body.substring(0, 500));
@@ -247,9 +269,24 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   function friendlyApiError(err) {
     const s = err?.status || 0;
     if (s === 401) { openKeyDialog(storage, 'Unauthorized (401). Please enter a valid OpenAI key.', apiKeyDialogShown); return; }
+    if (s === 429) {
+      if (isQuotaExhausted(err)) {
+        // Out of credits / quota exceeded — not transient. Stop trying so we don't
+        // keep firing requests that can only fail until billing is fixed.
+        apiHalted = true;
+        pending.clear();
+        if (shownErrors.has('quota')) return;
+        shownErrors.add('quota');
+        openInfo('OpenAI quota exceeded (429). Your account is out of credits or has hit its billing limit, so rewriting is paused. Add credits or raise your limit at platform.openai.com/account/billing, then reload the page.');
+        return;
+      }
+      if (shownErrors.has(s)) return;        // show each error type at most once per page load
+      shownErrors.add(s);
+      openInfo('Rate limited by OpenAI (429). The script is automatically backing off and will retry shortly — no action needed.');
+      return;
+    }
     if (shownErrors.has(s)) return;          // show each error type at most once per page load
     shownErrors.add(s);
-    if (s === 429) { openInfo('Rate limited by API (429). Try again in a minute. You can also lower maxBatch or enable visible-only to reduce burst.'); return; }
     if (s === 400) { log('Bad request (400). The page may contain text the API could not parse.'); return; }
     openInfo(`Unknown error${s ? ' (' + s + ')' : ''}. Check your network or try again.`);
   }
