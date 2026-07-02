@@ -23,7 +23,18 @@ export let PRICING = { ...DEFAULT_PRICING };
 export async function initApiTracking(storage) {
   try {
     const stored = await storage.get(STORAGE_KEYS.API_TOKENS, '');
-    if (stored) API_TOKENS = JSON.parse(stored);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Guard against corrupt/legacy data: every tracked type must keep its shape,
+      // otherwise updateApiTokens would throw on the first API call.
+      for (const type of Object.keys(API_TOKENS)) {
+        const t = parsed?.[type];
+        if (!t || typeof t.input !== 'number' || typeof t.output !== 'number' || typeof t.calls !== 'number') {
+          parsed[type] = { ...API_TOKENS[type] };
+        }
+      }
+      if (parsed && typeof parsed === 'object') API_TOKENS = parsed;
+    }
   } catch {}
 
   try {
@@ -148,6 +159,21 @@ export function xhrGet(url, headers = {}) {
 }
 
 /**
+ * Validate an OpenAI API key (falls back to the stored key when none given).
+ * Returns { ok: true } or { ok: false, message } — never throws.
+ */
+export async function validateApiKey(storage, key) {
+  const k = key || await storage.get(STORAGE_KEYS.OPENAI_KEY, '');
+  if (!k) return { ok: false, message: 'No key to test' };
+  try {
+    await xhrGet('https://api.openai.com/v1/models', { Authorization: `Bearer ${k}` });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: `Validation failed: ${e.message || e}` };
+  }
+}
+
+/**
  * Parse an OpenAI error response body to extract its machine-readable code/type.
  * OpenAI returns HTTP 429 for both genuine rate limiting (`rate_limit_exceeded`)
  * and exhausted billing/quota (`insufficient_quota`); the body is the only way
@@ -218,7 +244,10 @@ export async function rewriteBatch(storage, texts) {
      .replace(/[\u200B-\u200F\u2060\uFEFF]/g, '')               // strip zero-width / BOM
      .replace(/[\u202A-\u202E\u2066-\u2069]/g, '')              // strip bidi control chars
      .replace(/[\u00AD]/g, '')                                   // strip soft hyphens
-     .replace(/[\uD800-\uDFFF]/g, '')                            // strip lone surrogates
+     // Strip only LONE surrogates: match valid pairs first and keep them, so
+     // emoji/astral characters survive. A bare [\uD800-\uDFFF] class would also
+     // match the halves of valid pairs and mangle them.
+     .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g, m => (m.length === 2 ? m : ''))
   );
   const instructions =
     'You will receive INPUT as a JSON array of headlines.' +

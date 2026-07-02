@@ -18,6 +18,7 @@
 // @grant        GM_deleteValue
 // @grant        GM.deleteValue
 // @grant        GM_registerMenuCommand
+// @grant        GM.registerMenuCommand
 // @connect      api.openai.com
 // ==/UserScript==
 
@@ -28,13 +29,13 @@
 // or offering as a service without a separate commercial license from the author.
 // Full text: https://polyformproject.org/licenses/internal-use/1.0.0/
 
-import { CFG, UI_ATTR, TEMPERATURE_LEVELS, TEMPERATURE_ORDER, STORAGE_KEYS, DEFAULT_SELECTORS, DEFAULT_EXCLUDES, CARD_SELECTOR, MODEL_OPTIONS } from './modules/config.js';
-import { log, textTrim, withinLen, isInViewportWithMargin, escapeHtml } from './modules/utils.js';
+import { CFG, UI_ATTR, TEMPERATURE_LEVELS, STORAGE_KEYS, DEFAULT_SELECTORS, DEFAULT_EXCLUDES, MODEL_OPTIONS } from './modules/config.js';
+import { log, textTrim, withinLen, isInViewportWithMargin, escapeHtml, registerMenuCommand } from './modules/utils.js';
 import { Storage } from './modules/storage.js';
 import { HeadlineCache } from './modules/cache.js';
-import { domainPatternToRegex, listMatchesHost, compiledSelectors } from './modules/selectors.js';
-import { initApiTracking, rewriteBatch, resetApiTokens, updatePricing, calculateApiCost, API_TOKENS, PRICING, isQuotaExhausted } from './modules/api.js';
-import { ensureHighlightCSS, isExcluded, findTextHost, getCandidateElements, applyRewrites, restoreOriginals } from './modules/dom.js';
+import { domainPatternToRegex, listMatchesHost } from './modules/selectors.js';
+import { initApiTracking, rewriteBatch, resetApiTokens, updatePricing, calculateApiCost, validateApiKey, API_TOKENS, PRICING, isQuotaExhausted } from './modules/api.js';
+import { ensureHighlightCSS, isExcluded, getCandidateElements, applyRewrites, restoreOriginals, publisherOptOut } from './modules/dom.js';
 import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openTemperatureDialog, openModelSelectionDialog, showLongHeadlineDialog, showDiffAudit, openSelectorEditor } from './modules/settings.js';
 import { ensureBadge, updateBadgeCounts, reapplyFromCache } from './modules/badge.js';
 import { enterInspectionMode, showIncludedElements, exitIncludedElements } from './modules/inspection.js';
@@ -160,11 +161,6 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   await cache.init(HOST);
 
   // Publisher opt-out
-  function publisherOptOut() {
-    const m1 = document.querySelector('meta[name="neutralizer"][content="no-transform" i]');
-    const m2 = document.querySelector('meta[http-equiv="X-Content-Transform"][content="none" i]');
-    return !!(m1 || m2);
-  }
   const OPTED_OUT = publisherOptOut();
   if (OPTED_OUT) log('publisher opt-out detected; disabling.');
 
@@ -189,6 +185,10 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   // Exponential backoff (ms) applied to the next flush after a genuine 429.
   // Reset to 0 on any successful batch.
   let rateLimitBackoffMs = 0;
+  // Consecutive truncated/unparseable responses. Each retry halves the batch,
+  // but a persistently misbehaving model must not retry (and bill) forever.
+  let truncationRetries = 0;
+  const MAX_TRUNCATION_RETRIES = 3;
 
   function ensureObserver() {
     if (IO || !CFG.visibleOnly) return;
@@ -197,6 +197,8 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   function observerObserve(el) { if (CFG.visibleOnly) { ensureObserver(); IO.observe(el); } }
 
   function onIntersect(entries) {
+    const cachedTexts = [];
+    const cachedRewrites = [];
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
       const el = entry.target;
@@ -205,8 +207,11 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
       const text = textTrim(el);
 
       const cached = cache.get(text);
-      if (cached) { applyRewrites(buildMap([text]), [text], [cached], 'cache', STATS, CHANGES, seenEl, updateBadgeCounts); continue; }
-      if (!pending.has(text)) pending.add(text);
+      if (cached) { cachedTexts.push(text); cachedRewrites.push(cached); continue; }
+      pending.add(text);
+    }
+    if (cachedTexts.length) {
+      applyRewrites(buildMap(cachedTexts), cachedTexts, cachedRewrites, 'cache', STATS, CHANGES, seenEl, updateBadgeCounts);
     }
     scheduleFlush();
   }
@@ -219,7 +224,15 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
 
   function buildMap(texts) {
     const map = new Map();
-    for (const t of texts) { const set = textToElements.get(t); if (set && set.size) map.set(t, [...set]); }
+    for (const t of texts) {
+      const set = textToElements.get(t);
+      if (!set) continue;
+      // Prune elements removed from the DOM (SPA navigations) so we neither
+      // leak detached nodes nor waste work rewriting them.
+      for (const el of set) { if (!el.isConnected) set.delete(el); }
+      if (set.size) map.set(t, [...set]);
+      else textToElements.delete(t);
+    }
     return map;
   }
 
@@ -236,16 +249,24 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
       for (let i = 0; i < toSend.length; i++) cache.set(toSend[i], rewrites[i] ?? toSend[i]);
       applyRewrites(buildMap(toSend), toSend, rewrites, 'live', STATS, CHANGES, seenEl, updateBadgeCounts);
       rateLimitBackoffMs = 0;   // success clears any rate-limit backoff
+      truncationRetries = 0;
       STATS.batches++;
       log(`[stats] batches=${STATS.batches} total=${STATS.total} (live=${STATS.live}, cache=${STATS.cache})`);
     } catch (e) {
       if (e.status === 'truncated') {
-        // Output was truncated - re-queue items and they'll be sent in smaller batches next flush
-        log('Output truncated, re-queuing', toSend.length, 'headlines for retry in smaller batches');
-        const half = Math.ceil(toSend.length / 2);
-        for (const t of toSend) pending.add(t);
-        // Temporarily reduce maxBatch to avoid hitting the limit again
-        if (CFG.maxBatch > 4) CFG.maxBatch = Math.min(CFG.maxBatch, half);
+        truncationRetries++;
+        if (truncationRetries >= MAX_TRUNCATION_RETRIES) {
+          // Persistently truncated/unparseable output: dropping this batch beats
+          // hammering (and billing) the API in a retry loop.
+          log('Output truncated', truncationRetries, 'times in a row; dropping', toSend.length, 'headlines');
+        } else {
+          // Output was truncated - re-queue items and they'll be sent in smaller batches next flush
+          log('Output truncated, re-queuing', toSend.length, 'headlines for retry in smaller batches');
+          const half = Math.ceil(toSend.length / 2);
+          for (const t of toSend) pending.add(t);
+          // Temporarily reduce maxBatch to avoid hitting the limit again
+          if (CFG.maxBatch > 4) CFG.maxBatch = Math.min(CFG.maxBatch, half);
+        }
       } else if (e.status === 429 && !isQuotaExhausted(e)) {
         // Genuine rate limiting (not exhausted quota): transient. Re-queue, shrink
         // the batch to reduce burst, and let the existing flush schedule retry.
@@ -293,8 +314,8 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
 
   // Attach targets
   async function attachTargets(root = document) {
+    // getCandidateElements already resolves each match to its text host
     const candidates = getCandidateElements(root, SELECTORS, EXCLUDE)
-      .map(({ el, mode }) => ({ el: findTextHost(el), mode }))
       .filter(({ el, mode }) => {
         if (!el || seenEl.has(el) || isExcluded(el, EXCLUDE)) return false;
         if (mode === 'auto' && !withinLen(textTrim(el))) return false;
@@ -358,7 +379,7 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   }
 
   // Menu commands
-  GM_registerMenuCommand?.('Set / Validate OpenAI API key', async () => {
+  registerMenuCommand('Set / Validate OpenAI API key', async () => {
     const current = await storage.get(STORAGE_KEYS.OPENAI_KEY, '');
     openEditor({
       title: 'OpenAI API key',
@@ -367,18 +388,15 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
       hint: 'Stored locally (GM → localStorage → memory). Validate sends GET /v1/models.',
       onSave: async (val) => { await storage.set(STORAGE_KEYS.OPENAI_KEY, val); },
       onValidate: async (val) => {
-        const { xhrGet } = await import('./modules/api.js');
-        const key = val || await storage.get(STORAGE_KEYS.OPENAI_KEY, '');
-        if (!key) { openInfo('No key to test'); return; }
-        try { await xhrGet('https://api.openai.com/v1/models', { Authorization: `Bearer ${key}` }); openInfo('Validation OK (HTTP 200)'); }
-        catch (e) { openInfo(`Validation failed: ${e.message || e}`); }
+        const res = await validateApiKey(storage, val);
+        openInfo(res.ok ? 'Validation OK (HTTP 200)' : res.message);
       }
     });
   });
-  GM_registerMenuCommand?.(`AI model (${MODEL_OPTIONS[CFG.model]?.name || CFG.model})`, () => openModelSelectionDialog(storage, CFG.model, setModel));
+  registerMenuCommand(`AI model (${MODEL_OPTIONS[CFG.model]?.name || CFG.model})`, () => openModelSelectionDialog(storage, CFG.model, setModel));
 
-  GM_registerMenuCommand?.('--- Domain Controls ---', () => {});
-  GM_registerMenuCommand?.(
+  registerMenuCommand('--- Domain Controls ---', () => {});
+  registerMenuCommand(
     DOMAINS_MODE === 'allow' ? 'Domain mode: Allowlist only' : 'Domain mode: All domains with Denylist',
     async () => {
       DOMAINS_MODE = (DOMAINS_MODE === 'allow') ? 'deny' : 'allow';
@@ -386,7 +404,7 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
       location.reload();
     }
   );
-  GM_registerMenuCommand?.(
+  registerMenuCommand(
     computeDomainDisabled(HOST) ? `Current page: DISABLED (click to enable)` : `Current page: ENABLED (click to disable)`,
     async () => {
       if (DOMAINS_MODE === 'allow') {
@@ -408,14 +426,14 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
     }
   );
 
-  GM_registerMenuCommand?.('--- Toggles ---', () => {});
-  GM_registerMenuCommand?.(`Neutralization strength (${TEMPERATURE_LEVEL})`, () => openTemperatureDialog(storage, TEMPERATURE_LEVEL, setTemperature));
-  GM_registerMenuCommand?.(`Toggle auto-detect (${CFG.autoDetect ? 'ON' : 'OFF'})`, async () => { await setAutoDetect(!CFG.autoDetect); });
-  GM_registerMenuCommand?.(`Toggle DEBUG logs (${CFG.DEBUG ? 'ON' : 'OFF'})`, async () => { await setDebug(!CFG.DEBUG); });
-  GM_registerMenuCommand?.(`Toggle badge (${SHOW_BADGE ? 'ON' : 'OFF'})`, async () => { await setShowBadge(!SHOW_BADGE); });
+  registerMenuCommand('--- Toggles ---', () => {});
+  registerMenuCommand(`Neutralization strength (${TEMPERATURE_LEVEL})`, () => openTemperatureDialog(storage, TEMPERATURE_LEVEL, setTemperature));
+  registerMenuCommand(`Toggle auto-detect (${CFG.autoDetect ? 'ON' : 'OFF'})`, async () => { await setAutoDetect(!CFG.autoDetect); });
+  registerMenuCommand(`Toggle DEBUG logs (${CFG.DEBUG ? 'ON' : 'OFF'})`, async () => { await setDebug(!CFG.DEBUG); });
+  registerMenuCommand(`Toggle badge (${SHOW_BADGE ? 'ON' : 'OFF'})`, async () => { await setShowBadge(!SHOW_BADGE); });
 
   if (LONG_HEADLINE_EXCEPTIONS[HOST]) {
-    GM_registerMenuCommand?.(`Clear long headline exception (${HOST})`, async () => {
+    registerMenuCommand(`Clear long headline exception (${HOST})`, async () => {
       if (confirm(`Clear the long headline exception for ${HOST}?\n\nYou'll be prompted again if selectors match text longer than ${CFG.sanityCheckLen} characters.`)) {
         delete LONG_HEADLINE_EXCEPTIONS[HOST];
         await storage.set(STORAGE_KEYS.LONG_HEADLINE_EXCEPTIONS, JSON.stringify(LONG_HEADLINE_EXCEPTIONS));
@@ -423,7 +441,7 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
       }
     });
   }
-  GM_registerMenuCommand?.('Reset API usage stats', async () => { await resetApiTokens(storage); openInfo('API usage stats reset. Token counters and cost tracking cleared.'); });
+  registerMenuCommand('Reset API usage stats', async () => { await resetApiTokens(storage); openInfo('API usage stats reset. Token counters and cost tracking cleared.'); });
 
   // Bootstrap
   const isFirstInstall = await storage.get(STORAGE_KEYS.FIRST_INSTALL, '') === '';
@@ -502,15 +520,35 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   attachTargets(document);
   ensureObserver();
 
-  const mo = new MutationObserver((muts) => {
+  // Coalesce mutation bursts: collect added elements and process them in one
+  // debounced pass instead of running the full selector pipeline per node.
+  const pendingRoots = new Set();
+  let mutationTimer = null;
+  function processPendingRoots() {
+    mutationTimer = null;
     ensureBadge(badgeOpts());
+    if (pendingRoots.size === 0) return;
+    const all = [...pendingRoots];
+    pendingRoots.clear();
+    if (all.length > 40) {
+      // Large burst (page hydration, infinite scroll): one document-wide pass
+      // is cheaper than deduplicating and scanning many subtrees.
+      attachTargets(document);
+      return;
+    }
+    // Skip roots nested inside other pending roots (subtree replacements)
+    const roots = all.filter(n =>
+      n.isConnected && !all.some(other => other !== n && other.contains(n))
+    );
+    for (const root of roots) attachTargets(root);
+  }
+  const mo = new MutationObserver((muts) => {
     for (const m of muts) {
-      if (m.addedNodes && m.addedNodes.length) {
-        m.addedNodes.forEach(n => {
-          if (n.nodeType === 1) attachTargets(n);
-        });
+      for (const n of m.addedNodes) {
+        if (n.nodeType === 1) pendingRoots.add(n);
       }
     }
+    if (!mutationTimer) mutationTimer = setTimeout(processPendingRoots, 150);
   });
   mo.observe(document.body, { childList: true, subtree: true });
 

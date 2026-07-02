@@ -47,7 +47,8 @@ export function ensureHighlightCSS() {
       color: #fff !important; padding: 4px 8px !important; font-size: 9px !important;
       font-weight: 600 !important; text-align: center !important; cursor: grab !important;
       user-select: none !important; border-radius: 9px 9px 0 0 !important;
-      letter-spacing: 0.3px !important; line-height: 1.3 !important; white-space: pre-line !important; }
+      letter-spacing: 0.3px !important; line-height: 1.3 !important; white-space: pre-line !important;
+      touch-action: none !important; }
     .neutralizer-badge .badge-header:active { cursor: grabbing !important; }
     .neutralizer-badge .badge-content { display: flex !important; flex-direction: column !important;
       gap: 4px !important; padding: 6px 8px !important; }
@@ -135,13 +136,45 @@ export function ensureHighlightCSS() {
 }
 
 /**
+ * Check if publisher opted out of content transformation
+ */
+export function publisherOptOut() {
+  const m1 = document.querySelector('meta[name="neutralizer"][content="no-transform" i]');
+  const m2 = document.querySelector('meta[http-equiv="X-Content-Transform"][content="none" i]');
+  return !!(m1 || m2);
+}
+
+// Compiled exclude-selector strings, cached per EXCLUDE object. isExcluded runs
+// for every candidate element, so re-joining the arrays each call adds up.
+const excludeSelectorCache = new WeakMap();
+function compiledExcludes(EXCLUDE) {
+  let c = excludeSelectorCache.get(EXCLUDE);
+  if (!c || c.self !== EXCLUDE.self || c.ancestors !== EXCLUDE.ancestors) {
+    c = {
+      self: EXCLUDE.self,
+      ancestors: EXCLUDE.ancestors,
+      selfJoined: EXCLUDE.self.join(','),
+      ancestorsJoined: EXCLUDE.ancestors.join(',')
+    };
+    excludeSelectorCache.set(EXCLUDE, c);
+  }
+  return c;
+}
+
+/**
  * Check if element should be excluded
  */
 export function isExcluded(el, EXCLUDE) {
   if (el.closest?.(`[${UI_ATTR}]`)) return true;
   if (el.closest('input, textarea, [contenteditable=""], [contenteditable="true"]')) return true;
-  if (EXCLUDE.self.length && el.matches?.(EXCLUDE.self.join(','))) return true;
-  if (EXCLUDE.ancestors.length && el.closest?.(EXCLUDE.ancestors.join(','))) return true;
+  const { selfJoined, ancestorsJoined } = compiledExcludes(EXCLUDE);
+  // Invalid user-supplied selectors must not break the whole pipeline
+  try {
+    if (selfJoined && el.matches?.(selfJoined)) return true;
+    if (ancestorsJoined && el.closest?.(ancestorsJoined)) return true;
+  } catch (e) {
+    log('exclude selector error:', e.message || e);
+  }
   return false;
 }
 

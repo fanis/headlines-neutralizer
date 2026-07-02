@@ -19,7 +19,10 @@ export const hasPunct = (s) => /[.?!:;—–-]/.test(s);
 export const hasDigit = (s) => /\d/.test(s);
 
 // DOM checks
-export const isVisible = (el) => el.offsetParent !== null;
+// checkVisibility (when available) also covers position:fixed elements, which
+// have a null offsetParent even when visible.
+export const isVisible = (el) =>
+  typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.offsetParent !== null;
 export const isEditable = (el) => el.closest('input, textarea, [contenteditable=""], [contenteditable="true"]');
 
 // Text analysis
@@ -38,18 +41,15 @@ export const isAllCapsish = (s) => {
 };
 
 // Quote protection (preserve quoted text verbatim)
+// Matches straight quotes, curly quotes and guillemets. Each quoted span in the
+// rewrite is replaced by the corresponding span from the original, in order.
+const QUOTE_SPAN = /["“”«»].*?["“”«»]/g;
 export function quoteProtect(original, rewritten) {
-  const quotes = [];
-  const rx = /["""«»](.*?)["""«»]/g;
-  let m;
-  while ((m = rx.exec(original)) !== null) {
-    quotes.push(m[0]);
-  }
-  let out = rewritten;
-  for (const q of quotes) {
-    out = out.replace(/(["""«»]).*?(["""«»])/g, q);
-  }
-  return out;
+  const quotes = original.match(QUOTE_SPAN) || [];
+  if (!quotes.length) return rewritten;
+  let i = 0;
+  // Function replacer: quote text is inserted literally (no $-pattern expansion)
+  return rewritten.replace(QUOTE_SPAN, (span) => (i < quotes.length ? quotes[i++] : span));
 }
 
 // HTML escaping
@@ -81,4 +81,24 @@ export function isInViewportWithMargin(el) {
 // Line parsing for dialogs
 export function parseLines(s) {
   return s.split(/[\n,;]+/).map(x => x.trim()).filter(Boolean);
+}
+
+// Register a userscript menu command across managers.
+// `GM_registerMenuCommand?.()` is NOT safe when the identifier is undeclared
+// (e.g. Greasemonkey 4, Safari Userscripts): optional chaining still throws a
+// ReferenceError. typeof guards are the only safe check.
+export function registerMenuCommand(label, fn) {
+  try {
+    if (typeof GM !== 'undefined' && typeof GM.registerMenuCommand === 'function') {
+      GM.registerMenuCommand(label, fn);
+      return true;
+    }
+  } catch {}
+  try {
+    if (typeof GM_registerMenuCommand === 'function') {
+      GM_registerMenuCommand(label, fn);
+      return true;
+    }
+  } catch {}
+  return false;
 }
