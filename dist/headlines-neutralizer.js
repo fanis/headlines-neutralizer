@@ -18,6 +18,7 @@
 // @grant        GM_deleteValue
 // @grant        GM.deleteValue
 // @grant        GM_registerMenuCommand
+// @grant        GM.registerMenuCommand
 // @connect      api.openai.com
 // ==/UserScript==
 
@@ -214,7 +215,10 @@
   const hasDigit = (s) => /\d/.test(s);
 
   // DOM checks
-  const isVisible = (el) => el.offsetParent !== null;
+  // checkVisibility (when available) also covers position:fixed elements, which
+  // have a null offsetParent even when visible.
+  const isVisible = (el) =>
+    typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.offsetParent !== null;
 
   // Text analysis
   const lowerRatio = (s) => {
@@ -232,18 +236,15 @@
   };
 
   // Quote protection (preserve quoted text verbatim)
+  // Matches straight quotes, curly quotes and guillemets. Each quoted span in the
+  // rewrite is replaced by the corresponding span from the original, in order.
+  const QUOTE_SPAN = /["“”«»].*?["“”«»]/g;
   function quoteProtect(original, rewritten) {
-    const quotes = [];
-    const rx = /["""«»](.*?)["""«»]/g;
-    let m;
-    while ((m = rx.exec(original)) !== null) {
-      quotes.push(m[0]);
-    }
-    let out = rewritten;
-    for (const q of quotes) {
-      out = out.replace(/(["""«»]).*?(["""«»])/g, q);
-    }
-    return out;
+    const quotes = original.match(QUOTE_SPAN) || [];
+    if (!quotes.length) return rewritten;
+    let i = 0;
+    // Function replacer: quote text is inserted literally (no $-pattern expansion)
+    return rewritten.replace(QUOTE_SPAN, (span) => (i < quotes.length ? quotes[i++] : span));
   }
 
   // HTML escaping
@@ -275,6 +276,26 @@
   // Line parsing for dialogs
   function parseLines(s) {
     return s.split(/[\n,;]+/).map(x => x.trim()).filter(Boolean);
+  }
+
+  // Register a userscript menu command across managers.
+  // `GM_registerMenuCommand?.()` is NOT safe when the identifier is undeclared
+  // (e.g. Greasemonkey 4, Safari Userscripts): optional chaining still throws a
+  // ReferenceError. typeof guards are the only safe check.
+  function registerMenuCommand(label, fn) {
+    try {
+      if (typeof GM !== 'undefined' && typeof GM.registerMenuCommand === 'function') {
+        GM.registerMenuCommand(label, fn);
+        return true;
+      }
+    } catch {}
+    try {
+      if (typeof GM_registerMenuCommand === 'function') {
+        GM_registerMenuCommand(label, fn);
+        return true;
+      }
+    } catch {}
+    return false;
   }
 
   /**
@@ -459,8 +480,17 @@
       // Update timestamp for LRU
       entry.t = Date.now();
       this.dirty = true;
+      this.schedulePersist();
 
       return entry.r;
+    }
+
+    /**
+     * Debounced write to storage
+     */
+    schedulePersist() {
+      clearTimeout(this._persistTimer);
+      this._persistTimer = setTimeout(() => this.persistCache(), 250);
     }
 
     /**
@@ -492,10 +522,8 @@
           this.persistCache();
           this.log('cache trimmed:', keys.length, '→', Object.keys(this.cache).length);
         });
-      } else if (this.dirty) {
-        // Debounced write
-        clearTimeout(this._persistTimer);
-        this._persistTimer = setTimeout(() => this.persistCache(), 250);
+      } else {
+        this.schedulePersist();
       }
     }
 
@@ -511,7 +539,9 @@
      * Clear all cache entries
      */
     async clear() {
+      clearTimeout(this._persistTimer);
       this.cache = {};
+      this.dirty = false;
       await this.storage.set(this.storageKey, JSON.stringify(this.cache));
     }
 
@@ -614,7 +644,18 @@
   async function initApiTracking(storage) {
     try {
       const stored = await storage.get(STORAGE_KEYS.API_TOKENS, '');
-      if (stored) API_TOKENS = JSON.parse(stored);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // Guard against corrupt/legacy data: every tracked type must keep its shape,
+        // otherwise updateApiTokens would throw on the first API call.
+        for (const type of Object.keys(API_TOKENS)) {
+          const t = parsed?.[type];
+          if (!t || typeof t.input !== 'number' || typeof t.output !== 'number' || typeof t.calls !== 'number') {
+            parsed[type] = { ...API_TOKENS[type] };
+          }
+        }
+        if (parsed && typeof parsed === 'object') API_TOKENS = parsed;
+      }
     } catch {}
 
     try {
@@ -739,6 +780,21 @@
   }
 
   /**
+   * Validate an OpenAI API key (falls back to the stored key when none given).
+   * Returns { ok: true } or { ok: false, message } — never throws.
+   */
+  async function validateApiKey(storage, key) {
+    const k = key || await storage.get(STORAGE_KEYS.OPENAI_KEY, '');
+    if (!k) return { ok: false, message: 'No key to test' };
+    try {
+      await xhrGet('https://api.openai.com/v1/models', { Authorization: `Bearer ${k}` });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, message: `Validation failed: ${e.message || e}` };
+    }
+  }
+
+  /**
    * Parse an OpenAI error response body to extract its machine-readable code/type.
    * OpenAI returns HTTP 429 for both genuine rate limiting (`rate_limit_exceeded`)
    * and exhausted billing/quota (`insufficient_quota`); the body is the only way
@@ -809,7 +865,10 @@
        .replace(/[\u200B-\u200F\u2060\uFEFF]/g, '')               // strip zero-width / BOM
        .replace(/[\u202A-\u202E\u2066-\u2069]/g, '')              // strip bidi control chars
        .replace(/[\u00AD]/g, '')                                   // strip soft hyphens
-       .replace(/[\uD800-\uDFFF]/g, '')                            // strip lone surrogates
+       // Strip only LONE surrogates: match valid pairs first and keep them, so
+       // emoji/astral characters survive. A bare [\uD800-\uDFFF] class would also
+       // match the halves of valid pairs and mangle them.
+       .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g, m => (m.length === 2 ? m : ''))
     );
     const instructions =
       'You will receive INPUT as a JSON array of headlines.' +
@@ -883,24 +942,6 @@
     return arr;
   }
 
-  var api = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    get API_TOKENS () { return API_TOKENS; },
-    get PRICING () { return PRICING; },
-    apiHeaders: apiHeaders,
-    calculateApiCost: calculateApiCost,
-    extractOutputText: extractOutputText,
-    initApiTracking: initApiTracking,
-    isQuotaExhausted: isQuotaExhausted,
-    parseApiError: parseApiError,
-    resetApiTokens: resetApiTokens,
-    rewriteBatch: rewriteBatch,
-    updateApiTokens: updateApiTokens,
-    updatePricing: updatePricing,
-    xhrGet: xhrGet,
-    xhrPost: xhrPost
-  });
-
   /**
    * Headline scoring and filtering logic
    */
@@ -964,7 +1005,7 @@
     if (hasDigit(t)) s += 4;
     const lr = lowerRatio(t);
     if (lr < 0.2) s -= 25;
-    if (/["""«»]/.test(t)) s += 2;
+    if (/["“”«»]/.test(t)) s += 2;
     return s;
   }
 
@@ -1041,7 +1082,8 @@
       color: #fff !important; padding: 4px 8px !important; font-size: 9px !important;
       font-weight: 600 !important; text-align: center !important; cursor: grab !important;
       user-select: none !important; border-radius: 9px 9px 0 0 !important;
-      letter-spacing: 0.3px !important; line-height: 1.3 !important; white-space: pre-line !important; }
+      letter-spacing: 0.3px !important; line-height: 1.3 !important; white-space: pre-line !important;
+      touch-action: none !important; }
     .neutralizer-badge .badge-header:active { cursor: grabbing !important; }
     .neutralizer-badge .badge-content { display: flex !important; flex-direction: column !important;
       gap: 4px !important; padding: 6px 8px !important; }
@@ -1129,13 +1171,45 @@
   }
 
   /**
+   * Check if publisher opted out of content transformation
+   */
+  function publisherOptOut() {
+    const m1 = document.querySelector('meta[name="neutralizer"][content="no-transform" i]');
+    const m2 = document.querySelector('meta[http-equiv="X-Content-Transform"][content="none" i]');
+    return !!(m1 || m2);
+  }
+
+  // Compiled exclude-selector strings, cached per EXCLUDE object. isExcluded runs
+  // for every candidate element, so re-joining the arrays each call adds up.
+  const excludeSelectorCache = new WeakMap();
+  function compiledExcludes(EXCLUDE) {
+    let c = excludeSelectorCache.get(EXCLUDE);
+    if (!c || c.self !== EXCLUDE.self || c.ancestors !== EXCLUDE.ancestors) {
+      c = {
+        self: EXCLUDE.self,
+        ancestors: EXCLUDE.ancestors,
+        selfJoined: EXCLUDE.self.join(','),
+        ancestorsJoined: EXCLUDE.ancestors.join(',')
+      };
+      excludeSelectorCache.set(EXCLUDE, c);
+    }
+    return c;
+  }
+
+  /**
    * Check if element should be excluded
    */
   function isExcluded(el, EXCLUDE) {
     if (el.closest?.(`[${UI_ATTR}]`)) return true;
     if (el.closest('input, textarea, [contenteditable=""], [contenteditable="true"]')) return true;
-    if (EXCLUDE.self.length && el.matches?.(EXCLUDE.self.join(','))) return true;
-    if (EXCLUDE.ancestors.length && el.closest?.(EXCLUDE.ancestors.join(','))) return true;
+    const { selfJoined, ancestorsJoined } = compiledExcludes(EXCLUDE);
+    // Invalid user-supplied selectors must not break the whole pipeline
+    try {
+      if (selfJoined && el.matches?.(selfJoined)) return true;
+      if (ancestorsJoined && el.closest?.(ancestorsJoined)) return true;
+    } catch (e) {
+      log('exclude selector error:', e.message || e);
+    }
     return false;
   }
 
@@ -1350,23 +1424,22 @@
   `;
     const wrap = document.createElement('div');
     wrap.className = 'wrap';
-    const bodyList = `<textarea spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">${
-    Array.isArray(initial) ? initial.join('\n') : ''
-  }</textarea>`;
+    // All interpolated values are escaped: stored selectors and messages must not
+    // be able to break out of the textarea markup.
+    const initialText = escapeHtml(Array.isArray(initial) ? initial.join('\n') : (mode === 'info' ? String(initial) : ''));
+    const bodyList = `<textarea spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">${initialText}</textarea>`;
     const bodyDomain = `
     <div class="section-label">Global settings (read-only):</div>
-    <textarea class="readonly" readonly spellcheck="false">${Array.isArray(globalItems) ? globalItems.join('\n') : ''}</textarea>
+    <textarea class="readonly" readonly spellcheck="false">${escapeHtml(Array.isArray(globalItems) ? globalItems.join('\n') : '')}</textarea>
     <div class="section-label">Domain-specific additions (editable):</div>
-    <textarea class="editable" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">${Array.isArray(initial) ? initial.join('\n') : ''}</textarea>
+    <textarea class="editable" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">${initialText}</textarea>
   `;
     const bodySecret = `
     <div class="row">
       <input id="sec" type="password" placeholder="sk-..." autocomplete="off" />
       <button id="toggle" title="Show/Hide">👁</button>
     </div>`;
-    const bodyInfo = `<textarea class="readonly" readonly spellcheck="false" style="height:auto;min-height:60px;max-height:300px;">${
-    Array.isArray(initial) ? initial.join('\n') : String(initial)
-  }</textarea>`;
+    const bodyInfo = `<textarea class="readonly" readonly spellcheck="false" style="height:auto;min-height:60px;max-height:300px;">${initialText}</textarea>`;
 
     let bodyContent, actionsContent;
     if (mode === 'info') {
@@ -1384,13 +1457,13 @@
     }
 
     wrap.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true" aria-label="${title}">
-      <h3>${title}</h3>
+    <div class="modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <h3>${escapeHtml(title)}</h3>
       ${bodyContent}
       <div class="actions">
         ${actionsContent}
       </div>
-      <p class="hint">${hint}</p>
+      <p class="hint">${escapeHtml(hint)}</p>
     </div>`;
     shadow.append(style, wrap);
     document.body.appendChild(host);
@@ -1478,14 +1551,8 @@
         apiKeyDialogShown.value = false;
       },
       onValidate: async (val) => {
-        const key = val || await storage.get(STORAGE_KEYS.OPENAI_KEY, '');
-        if (!key) { openInfo('No key to test'); return; }
-        try {
-          await xhrGet('https://api.openai.com/v1/models', { Authorization: `Bearer ${key}` });
-          openInfo('Validation OK (HTTP 200)');
-        } catch (e) {
-          openInfo(`Validation failed: ${e.message || e}`);
-        }
+        const res = await validateApiKey(storage, val);
+        openInfo(res.ok ? 'Validation OK (HTTP 200)' : res.message);
       }
     });
   }
@@ -1563,14 +1630,9 @@
           openInfo('API key saved! The script will now work on all websites. Reload any page to see it in action.');
         },
         onValidate: async (val) => {
-          const key = val || await storage.get(STORAGE_KEYS.OPENAI_KEY, '');
-          if (!key) { openInfo('Please enter your API key first'); return; }
-          try {
-            await xhrGet('https://api.openai.com/v1/models', { Authorization: `Bearer ${key}` });
-            openInfo('Validation OK! Click Save to continue.');
-          } catch (e) {
-            openInfo(`Validation failed: ${e.message || e}`);
-          }
+          const res = await validateApiKey(storage, val);
+          if (res.ok) openInfo('Validation OK! Click Save to continue.');
+          else openInfo(res.message === 'No key to test' ? 'Please enter your API key first' : res.message);
         }
       });
     });
@@ -1973,7 +2035,7 @@
         <div class="actions">
           <button class="btn secondary skip">Skip These</button>
           <button class="btn primary process-once">Process Once</button>
-          <button class="btn success remember">Process & Remember for ${HOST}</button>
+          <button class="btn success remember">Process & Remember for ${escapeHtml(HOST)}</button>
         </div>
       </div>
     `;
@@ -2102,6 +2164,10 @@
   let badgeDragOffsetY = 0;
   let boundOnBadgeDrag = null;
   let boundStopBadgeDrag = null;
+  // Document-level dismiss handlers; kept as module state so re-creating the
+  // badge (e.g. after the site wipes the DOM) doesn't stack up dead listeners.
+  let dismissClickHandler = null;
+  let dismissKeyHandler = null;
 
   /**
    * Ensure badge exists and is rendered
@@ -2175,7 +2241,8 @@
     const header = badge.querySelector('.badge-header');
     const handle = badge.querySelector('.badge-handle');
 
-    header.addEventListener('mousedown', (e) => startBadgeDrag(e, BADGE_COLLAPSED, BADGE_POS, storage));
+    // Pointer events cover mouse AND touch (Android/iOS userscript managers)
+    header.addEventListener('pointerdown', (e) => startBadgeDrag(e, BADGE_COLLAPSED, BADGE_POS, storage));
     handle.addEventListener('click', () => toggleBadgeCollapse(storage, BADGE_COLLAPSED, BADGE_POS, badge));
 
     badge.querySelector('.neutralizer-action').addEventListener('click', () => onBadgeAction(restoreOriginals, reapplyFromCache));
@@ -2189,13 +2256,17 @@
       if (!wasOpen) positionPopover(popover);
     });
 
-    // Close popover on click-outside
-    document.addEventListener('click', (e) => {
-      if (!badge.contains(e.target)) closePopover();
-    });
-    document.addEventListener('keydown', (e) => {
+    // Close popover on click-outside (replace any handlers from a previous badge)
+    if (dismissClickHandler) document.removeEventListener('click', dismissClickHandler);
+    if (dismissKeyHandler) document.removeEventListener('keydown', dismissKeyHandler);
+    dismissClickHandler = (e) => {
+      if (badge && !badge.contains(e.target)) closePopover();
+    };
+    dismissKeyHandler = (e) => {
       if (e.key === 'Escape') closePopover();
-    });
+    };
+    document.addEventListener('click', dismissClickHandler);
+    document.addEventListener('keydown', dismissKeyHandler);
 
     // Popover action items
     popover.querySelectorAll('.neutralizer-popover-item').forEach(btn => {
@@ -2276,11 +2347,12 @@
     const rect = badge.getBoundingClientRect();
     badgeDragOffsetY = e.clientY - rect.top;
 
-    boundOnBadgeDrag = (e) => onBadgeDrag(e, BADGE_POS);
+    boundOnBadgeDrag = (ev) => onBadgeDrag(ev, BADGE_POS);
     boundStopBadgeDrag = () => stopBadgeDrag(storage, BADGE_POS);
 
-    document.addEventListener('mousemove', boundOnBadgeDrag);
-    document.addEventListener('mouseup', boundStopBadgeDrag);
+    document.addEventListener('pointermove', boundOnBadgeDrag);
+    document.addEventListener('pointerup', boundStopBadgeDrag);
+    document.addEventListener('pointercancel', boundStopBadgeDrag);
 
     e.preventDefault();
   }
@@ -2309,11 +2381,12 @@
     badge.classList.remove('neutralizer-dragging');
 
     if (boundOnBadgeDrag) {
-      document.removeEventListener('mousemove', boundOnBadgeDrag);
+      document.removeEventListener('pointermove', boundOnBadgeDrag);
       boundOnBadgeDrag = null;
     }
     if (boundStopBadgeDrag) {
-      document.removeEventListener('mouseup', boundStopBadgeDrag);
+      document.removeEventListener('pointerup', boundStopBadgeDrag);
+      document.removeEventListener('pointercancel', boundStopBadgeDrag);
       boundStopBadgeDrag = null;
     }
 
@@ -2687,7 +2760,7 @@
     const globalExclusions = findMatchingExclusions(el, EXCLUDE_GLOBAL);
     const domainExclusions = findMatchingExclusions(el, EXCLUDE_DOMAIN);
 
-    const hasOptOut = document.querySelector('meta[name="neutralizer"][content="opt-out"]') !== null;
+    const hasOptOut = publisherOptOut();
     const isProcessed = !isExcluded(el, EXCLUDE) && (autoDetect.matched || globalSelectors.length > 0 || domainSelectors.length > 0);
 
     return {
@@ -2896,9 +2969,9 @@
 
       <div class="section">
         <div class="section-title">Element Information</div>
-        <div class="info-row"><span class="info-label">Tag:</span> &lt;${diag.tag}&gt;</div>
-        <div class="info-row"><span class="info-label">ID:</span> ${diag.id || '(none)'}</div>
-        <div class="info-row"><span class="info-label">Classes:</span> ${diag.classes || '(none)'}</div>
+        <div class="info-row"><span class="info-label">Tag:</span> &lt;${escapeHtml(diag.tag)}&gt;</div>
+        <div class="info-row"><span class="info-label">ID:</span> ${escapeHtml(diag.id) || '(none)'}</div>
+        <div class="info-row"><span class="info-label">Classes:</span> ${escapeHtml(diag.classes) || '(none)'}</div>
         <div class="info-row"><span class="info-label">Text:</span> "${escapeHtml(diag.text)}"</div>
         <div class="info-row"><span class="info-label">CSS Selector:</span> <span class="code">${escapeHtml(diag.selector)}</span></div>
       </div>
@@ -2916,7 +2989,7 @@
       </div>
 
       <div class="section">
-        <div class="section-title">Domain Selectors (${HOST})</div>
+        <div class="section-title">Domain Selectors (${escapeHtml(HOST)})</div>
         ${domainSelectorsHTML}
       </div>
 
@@ -2926,7 +2999,7 @@
       </div>
 
       <div class="section">
-        <div class="section-title">Domain Exclusions (${HOST})</div>
+        <div class="section-title">Domain Exclusions (${escapeHtml(HOST)})</div>
         ${domainExclusionsHTML}
       </div>
 
@@ -2959,12 +3032,17 @@
     shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
 
     shadow.querySelector('.copy-selector').addEventListener('click', () => {
-      navigator.clipboard.writeText(diag.selector).then(() => {
-        const btn = shadow.querySelector('.copy-selector');
-        const orig = btn.textContent;
-        btn.textContent = '✓ Copied!';
+      const btn = shadow.querySelector('.copy-selector');
+      const orig = btn.textContent;
+      const flash = (text) => {
+        btn.textContent = text;
         setTimeout(() => btn.textContent = orig, 2000);
-      });
+      };
+      // Clipboard access can be denied (permissions / insecure context)
+      if (!navigator.clipboard?.writeText) { flash('✗ Clipboard unavailable'); return; }
+      navigator.clipboard.writeText(diag.selector)
+        .then(() => flash('✓ Copied!'))
+        .catch(() => flash('✗ Copy failed'));
     });
 
     attachActionHandlers(shadow, diag, close, storage, DOMAIN_SELECTORS, DOMAIN_EXCLUDES, HOST, SELECTORS_GLOBAL, EXCLUDE_GLOBAL, openInfo);
@@ -3098,6 +3176,7 @@
   // @grant        GM_deleteValue
   // @grant        GM.deleteValue
   // @grant        GM_registerMenuCommand
+  // @grant        GM.registerMenuCommand
   // @connect      api.openai.com
   // ==/UserScript==
 
@@ -3222,11 +3301,6 @@
     await cache.init(HOST);
 
     // Publisher opt-out
-    function publisherOptOut() {
-      const m1 = document.querySelector('meta[name="neutralizer"][content="no-transform" i]');
-      const m2 = document.querySelector('meta[http-equiv="X-Content-Transform"][content="none" i]');
-      return !!(m1 || m2);
-    }
     const OPTED_OUT = publisherOptOut();
     if (OPTED_OUT) log('publisher opt-out detected; disabling.');
 
@@ -3251,6 +3325,10 @@
     // Exponential backoff (ms) applied to the next flush after a genuine 429.
     // Reset to 0 on any successful batch.
     let rateLimitBackoffMs = 0;
+    // Consecutive truncated/unparseable responses. Each retry halves the batch,
+    // but a persistently misbehaving model must not retry (and bill) forever.
+    let truncationRetries = 0;
+    const MAX_TRUNCATION_RETRIES = 3;
 
     function ensureObserver() {
       if (IO || !CFG.visibleOnly) return;
@@ -3259,6 +3337,8 @@
     function observerObserve(el) { if (CFG.visibleOnly) { ensureObserver(); IO.observe(el); } }
 
     function onIntersect(entries) {
+      const cachedTexts = [];
+      const cachedRewrites = [];
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
         const el = entry.target;
@@ -3267,8 +3347,11 @@
         const text = textTrim(el);
 
         const cached = cache.get(text);
-        if (cached) { applyRewrites(buildMap([text]), [text], [cached], 'cache', STATS, CHANGES, seenEl); continue; }
-        if (!pending.has(text)) pending.add(text);
+        if (cached) { cachedTexts.push(text); cachedRewrites.push(cached); continue; }
+        pending.add(text);
+      }
+      if (cachedTexts.length) {
+        applyRewrites(buildMap(cachedTexts), cachedTexts, cachedRewrites, 'cache', STATS, CHANGES, seenEl);
       }
       scheduleFlush();
     }
@@ -3281,7 +3364,15 @@
 
     function buildMap(texts) {
       const map = new Map();
-      for (const t of texts) { const set = textToElements.get(t); if (set && set.size) map.set(t, [...set]); }
+      for (const t of texts) {
+        const set = textToElements.get(t);
+        if (!set) continue;
+        // Prune elements removed from the DOM (SPA navigations) so we neither
+        // leak detached nodes nor waste work rewriting them.
+        for (const el of set) { if (!el.isConnected) set.delete(el); }
+        if (set.size) map.set(t, [...set]);
+        else textToElements.delete(t);
+      }
       return map;
     }
 
@@ -3298,16 +3389,24 @@
         for (let i = 0; i < toSend.length; i++) cache.set(toSend[i], rewrites[i] ?? toSend[i]);
         applyRewrites(buildMap(toSend), toSend, rewrites, 'live', STATS, CHANGES, seenEl, updateBadgeCounts);
         rateLimitBackoffMs = 0;   // success clears any rate-limit backoff
+        truncationRetries = 0;
         STATS.batches++;
         log(`[stats] batches=${STATS.batches} total=${STATS.total} (live=${STATS.live}, cache=${STATS.cache})`);
       } catch (e) {
         if (e.status === 'truncated') {
-          // Output was truncated - re-queue items and they'll be sent in smaller batches next flush
-          log('Output truncated, re-queuing', toSend.length, 'headlines for retry in smaller batches');
-          const half = Math.ceil(toSend.length / 2);
-          for (const t of toSend) pending.add(t);
-          // Temporarily reduce maxBatch to avoid hitting the limit again
-          if (CFG.maxBatch > 4) CFG.maxBatch = Math.min(CFG.maxBatch, half);
+          truncationRetries++;
+          if (truncationRetries >= MAX_TRUNCATION_RETRIES) {
+            // Persistently truncated/unparseable output: dropping this batch beats
+            // hammering (and billing) the API in a retry loop.
+            log('Output truncated', truncationRetries, 'times in a row; dropping', toSend.length, 'headlines');
+          } else {
+            // Output was truncated - re-queue items and they'll be sent in smaller batches next flush
+            log('Output truncated, re-queuing', toSend.length, 'headlines for retry in smaller batches');
+            const half = Math.ceil(toSend.length / 2);
+            for (const t of toSend) pending.add(t);
+            // Temporarily reduce maxBatch to avoid hitting the limit again
+            if (CFG.maxBatch > 4) CFG.maxBatch = Math.min(CFG.maxBatch, half);
+          }
         } else if (e.status === 429 && !isQuotaExhausted(e)) {
           // Genuine rate limiting (not exhausted quota): transient. Re-queue, shrink
           // the batch to reduce burst, and let the existing flush schedule retry.
@@ -3355,8 +3454,8 @@
 
     // Attach targets
     async function attachTargets(root = document) {
+      // getCandidateElements already resolves each match to its text host
       const candidates = getCandidateElements(root, SELECTORS, EXCLUDE)
-        .map(({ el, mode }) => ({ el: findTextHost(el), mode }))
         .filter(({ el, mode }) => {
           if (!el || seenEl.has(el) || isExcluded(el, EXCLUDE)) return false;
           if (mode === 'auto' && !withinLen(textTrim(el))) return false;
@@ -3420,7 +3519,7 @@
     }
 
     // Menu commands
-    GM_registerMenuCommand?.('Set / Validate OpenAI API key', async () => {
+    registerMenuCommand('Set / Validate OpenAI API key', async () => {
       const current = await storage.get(STORAGE_KEYS.OPENAI_KEY, '');
       openEditor({
         title: 'OpenAI API key',
@@ -3429,18 +3528,15 @@
         hint: 'Stored locally (GM → localStorage → memory). Validate sends GET /v1/models.',
         onSave: async (val) => { await storage.set(STORAGE_KEYS.OPENAI_KEY, val); },
         onValidate: async (val) => {
-          const { xhrGet } = await Promise.resolve().then(function () { return api; });
-          const key = val || await storage.get(STORAGE_KEYS.OPENAI_KEY, '');
-          if (!key) { openInfo('No key to test'); return; }
-          try { await xhrGet('https://api.openai.com/v1/models', { Authorization: `Bearer ${key}` }); openInfo('Validation OK (HTTP 200)'); }
-          catch (e) { openInfo(`Validation failed: ${e.message || e}`); }
+          const res = await validateApiKey(storage, val);
+          openInfo(res.ok ? 'Validation OK (HTTP 200)' : res.message);
         }
       });
     });
-    GM_registerMenuCommand?.(`AI model (${MODEL_OPTIONS[CFG.model]?.name || CFG.model})`, () => openModelSelectionDialog(storage, CFG.model, setModel));
+    registerMenuCommand(`AI model (${MODEL_OPTIONS[CFG.model]?.name || CFG.model})`, () => openModelSelectionDialog(storage, CFG.model, setModel));
 
-    GM_registerMenuCommand?.('--- Domain Controls ---', () => {});
-    GM_registerMenuCommand?.(
+    registerMenuCommand('--- Domain Controls ---', () => {});
+    registerMenuCommand(
       DOMAINS_MODE === 'allow' ? 'Domain mode: Allowlist only' : 'Domain mode: All domains with Denylist',
       async () => {
         DOMAINS_MODE = (DOMAINS_MODE === 'allow') ? 'deny' : 'allow';
@@ -3448,7 +3544,7 @@
         location.reload();
       }
     );
-    GM_registerMenuCommand?.(
+    registerMenuCommand(
       computeDomainDisabled(HOST) ? `Current page: DISABLED (click to enable)` : `Current page: ENABLED (click to disable)`,
       async () => {
         if (DOMAINS_MODE === 'allow') {
@@ -3470,14 +3566,14 @@
       }
     );
 
-    GM_registerMenuCommand?.('--- Toggles ---', () => {});
-    GM_registerMenuCommand?.(`Neutralization strength (${TEMPERATURE_LEVEL})`, () => openTemperatureDialog(storage, TEMPERATURE_LEVEL, setTemperature));
-    GM_registerMenuCommand?.(`Toggle auto-detect (${CFG.autoDetect ? 'ON' : 'OFF'})`, async () => { await setAutoDetect(!CFG.autoDetect); });
-    GM_registerMenuCommand?.(`Toggle DEBUG logs (${CFG.DEBUG ? 'ON' : 'OFF'})`, async () => { await setDebug(!CFG.DEBUG); });
-    GM_registerMenuCommand?.(`Toggle badge (${SHOW_BADGE ? 'ON' : 'OFF'})`, async () => { await setShowBadge(!SHOW_BADGE); });
+    registerMenuCommand('--- Toggles ---', () => {});
+    registerMenuCommand(`Neutralization strength (${TEMPERATURE_LEVEL})`, () => openTemperatureDialog(storage, TEMPERATURE_LEVEL, setTemperature));
+    registerMenuCommand(`Toggle auto-detect (${CFG.autoDetect ? 'ON' : 'OFF'})`, async () => { await setAutoDetect(!CFG.autoDetect); });
+    registerMenuCommand(`Toggle DEBUG logs (${CFG.DEBUG ? 'ON' : 'OFF'})`, async () => { await setDebug(!CFG.DEBUG); });
+    registerMenuCommand(`Toggle badge (${SHOW_BADGE ? 'ON' : 'OFF'})`, async () => { await setShowBadge(!SHOW_BADGE); });
 
     if (LONG_HEADLINE_EXCEPTIONS[HOST]) {
-      GM_registerMenuCommand?.(`Clear long headline exception (${HOST})`, async () => {
+      registerMenuCommand(`Clear long headline exception (${HOST})`, async () => {
         if (confirm(`Clear the long headline exception for ${HOST}?\n\nYou'll be prompted again if selectors match text longer than ${CFG.sanityCheckLen} characters.`)) {
           delete LONG_HEADLINE_EXCEPTIONS[HOST];
           await storage.set(STORAGE_KEYS.LONG_HEADLINE_EXCEPTIONS, JSON.stringify(LONG_HEADLINE_EXCEPTIONS));
@@ -3485,7 +3581,7 @@
         }
       });
     }
-    GM_registerMenuCommand?.('Reset API usage stats', async () => { await resetApiTokens(storage); openInfo('API usage stats reset. Token counters and cost tracking cleared.'); });
+    registerMenuCommand('Reset API usage stats', async () => { await resetApiTokens(storage); openInfo('API usage stats reset. Token counters and cost tracking cleared.'); });
 
     // Bootstrap
     const isFirstInstall = await storage.get(STORAGE_KEYS.FIRST_INSTALL, '') === '';
@@ -3564,15 +3660,35 @@
     attachTargets(document);
     ensureObserver();
 
-    const mo = new MutationObserver((muts) => {
+    // Coalesce mutation bursts: collect added elements and process them in one
+    // debounced pass instead of running the full selector pipeline per node.
+    const pendingRoots = new Set();
+    let mutationTimer = null;
+    function processPendingRoots() {
+      mutationTimer = null;
       ensureBadge(badgeOpts());
+      if (pendingRoots.size === 0) return;
+      const all = [...pendingRoots];
+      pendingRoots.clear();
+      if (all.length > 40) {
+        // Large burst (page hydration, infinite scroll): one document-wide pass
+        // is cheaper than deduplicating and scanning many subtrees.
+        attachTargets(document);
+        return;
+      }
+      // Skip roots nested inside other pending roots (subtree replacements)
+      const roots = all.filter(n =>
+        n.isConnected && !all.some(other => other !== n && other.contains(n))
+      );
+      for (const root of roots) attachTargets(root);
+    }
+    const mo = new MutationObserver((muts) => {
       for (const m of muts) {
-        if (m.addedNodes && m.addedNodes.length) {
-          m.addedNodes.forEach(n => {
-            if (n.nodeType === 1) attachTargets(n);
-          });
+        for (const n of m.addedNodes) {
+          if (n.nodeType === 1) pendingRoots.add(n);
         }
       }
+      if (!mutationTimer) mutationTimer = setTimeout(processPendingRoots, 150);
     });
     mo.observe(document.body, { childList: true, subtree: true });
 

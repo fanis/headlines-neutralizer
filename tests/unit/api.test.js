@@ -598,7 +598,7 @@ describe('API Integration', () => {
         '\u202A\u202E',   // bidi embedding/override (stripped)
         '\u2066\u2069',   // bidi isolates (stripped)
         '\u00AD',          // soft hyphen (stripped)
-        '\uD800\uDFFF',   // lone surrogates (stripped)
+        '\uDFFF\uD800',   // lone surrogates: low-first then trailing high, no valid pair (stripped)
         'B',
       ].join('');
 
@@ -626,6 +626,31 @@ describe('API Integration', () => {
       });
 
       const resultPromise = rewriteBatch(mockStorage, [dirty]);
+      await vi.runAllTimersAsync();
+      await resultPromise;
+    });
+
+    it('should preserve emoji and astral characters (valid surrogate pairs)', async () => {
+      const mockResponse = {
+        output_text: '["Clean headline"]',
+        usage: { input_tokens: 50, output_tokens: 25 }
+      };
+
+      const headline = 'Team wins 😀 title 🏆 in final';
+
+      mockGM_xmlhttpRequest.mockImplementation((opts) => {
+        const body = JSON.parse(opts.data);
+        const input = JSON.parse(body.input);
+
+        // Valid surrogate pairs must survive sanitization intact
+        expect(input[0]).toBe(headline);
+
+        setTimeout(() => {
+          opts.onload({ status: 200, responseText: JSON.stringify(mockResponse) });
+        }, 0);
+      });
+
+      const resultPromise = rewriteBatch(mockStorage, [headline]);
       await vi.runAllTimersAsync();
       await resultPromise;
     });

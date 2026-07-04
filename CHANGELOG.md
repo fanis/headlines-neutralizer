@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Fixed
+- **Menu commands crashed the script on Greasemonkey 4 / Safari Userscripts** - `GM_registerMenuCommand?.()` still throws a `ReferenceError` when the identifier is undeclared; replaced with a `registerMenuCommand` helper that uses `typeof` guards and also supports `GM.registerMenuCommand` (new `@grant` added)
+- **Emoji and astral characters were stripped from headlines sent to the API** - the lone-surrogate cleanup matched the halves of valid surrogate pairs; pairs are now matched first and preserved
+- **Quote protection now handles curly quotes and multiple quotes** - `quoteProtect` matched only straight quotes/guillemets (curly `“”` were silently rewritten), overwrote every quoted span with the last original quote, and could misbehave when quotes contained `$` replacement patterns; spans are now restored one-to-one, in order, literally
+- **Invalid user exclude selectors no longer break headline processing** - `isExcluded` catches selector syntax errors instead of throwing inside the IntersectionObserver/attach pipeline
+- **Corrupt stored API-token stats no longer crash tracking** - stored shape is validated on load and repaired with defaults
+- **Unbounded retry loop on persistently truncated API output** - batches are dropped after 3 consecutive truncated/unparseable responses instead of retrying (and billing) forever
+- **Publisher opt-out detection was inconsistent** - the inspection dialog checked a different meta tag than the main script; both now share one `publisherOptOut()`
+- **Badge re-creation leaked document-level listeners** - click/keydown popover-dismiss handlers are now replaced instead of stacking when the site wipes the badge from the DOM
+- **Clipboard copy in the inspection dialog no longer rejects unhandled** - failures show "Copy failed" instead of an unhandled promise rejection
+- **LRU timestamps from cache hits are now persisted** - `get()` schedules the same debounced write as `set()`; `clear()` cancels pending writes
+
+### Changed
+- **Badge dragging works on touch devices** - drag uses Pointer Events (with `touch-action: none`) so Android/iOS userscript managers can move the badge
+- **Auto-detect visibility check uses `checkVisibility()`** when available, so `position: fixed` headlines are no longer skipped (offsetParent fallback retained)
+- **MutationObserver batches DOM changes** - added nodes are coalesced and processed in one debounced pass (150 ms) instead of running the full selector pipeline per node; large bursts fall back to a single document-wide scan
+- **Performance** - exclude selectors are compiled once per config (not re-joined per element), duplicate `findTextHost` pass removed, cached rewrites from one IntersectionObserver callback are applied in a single batch, and detached elements are pruned from the text map (fixes slow memory growth on SPAs)
+- **API key validation deduplicated** - one `validateApiKey()` helper replaces three copies (menu, key dialog, welcome dialog); the menu no longer uses a dynamic `import()`
+- **Dialog HTML hardened** - titles, hints, stored selector lists, and page-controlled element ids/classes are HTML-escaped before interpolation into dialogs
+
 ## [2.4.2] - 2026-05-29
 
 ### Fixed

@@ -63,7 +63,7 @@ export function contentScore(t) {
   if (hasDigit(t)) s += 4;
   const lr = lowerRatio(t);
   if (lr < 0.2) s -= 25;
-  if (/["""«»]/.test(t)) s += 2;
+  if (/["“”«»]/.test(t)) s += 2;
   return s;
 }
 

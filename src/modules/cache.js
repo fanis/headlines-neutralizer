@@ -46,8 +46,17 @@ export class HeadlineCache {
     // Update timestamp for LRU
     entry.t = Date.now();
     this.dirty = true;
+    this.schedulePersist();
 
     return entry.r;
+  }
+
+  /**
+   * Debounced write to storage
+   */
+  schedulePersist() {
+    clearTimeout(this._persistTimer);
+    this._persistTimer = setTimeout(() => this.persistCache(), 250);
   }
 
   /**
@@ -79,10 +88,8 @@ export class HeadlineCache {
         this.persistCache();
         this.log('cache trimmed:', keys.length, '→', Object.keys(this.cache).length);
       });
-    } else if (this.dirty) {
-      // Debounced write
-      clearTimeout(this._persistTimer);
-      this._persistTimer = setTimeout(() => this.persistCache(), 250);
+    } else {
+      this.schedulePersist();
     }
   }
 
@@ -98,7 +105,9 @@ export class HeadlineCache {
    * Clear all cache entries
    */
   async clear() {
+    clearTimeout(this._persistTimer);
     this.cache = {};
+    this.dirty = false;
     await this.storage.set(this.storageKey, JSON.stringify(this.cache));
   }
 

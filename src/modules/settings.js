@@ -2,9 +2,9 @@
  * Settings dialogs and management
  */
 
-import { UI_ATTR, CFG, TEMPERATURE_LEVELS, TEMPERATURE_ORDER, STORAGE_KEYS, MODEL_OPTIONS } from './config.js';
+import { UI_ATTR, TEMPERATURE_LEVELS, TEMPERATURE_ORDER, STORAGE_KEYS, MODEL_OPTIONS } from './config.js';
 import { parseLines, escapeHtml } from './utils.js';
-import { xhrGet } from './api.js';
+import { validateApiKey } from './api.js';
 
 /**
  * Polymorphic editor for lists, secrets, domains, and info display
@@ -36,23 +36,22 @@ export function openEditor({ title, hint = 'One item per line', mode = 'list', i
   `;
   const wrap = document.createElement('div');
   wrap.className = 'wrap';
-  const bodyList = `<textarea spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">${
-    Array.isArray(initial) ? initial.join('\n') : ''
-  }</textarea>`;
+  // All interpolated values are escaped: stored selectors and messages must not
+  // be able to break out of the textarea markup.
+  const initialText = escapeHtml(Array.isArray(initial) ? initial.join('\n') : (mode === 'info' ? String(initial) : ''));
+  const bodyList = `<textarea spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">${initialText}</textarea>`;
   const bodyDomain = `
     <div class="section-label">Global settings (read-only):</div>
-    <textarea class="readonly" readonly spellcheck="false">${Array.isArray(globalItems) ? globalItems.join('\n') : ''}</textarea>
+    <textarea class="readonly" readonly spellcheck="false">${escapeHtml(Array.isArray(globalItems) ? globalItems.join('\n') : '')}</textarea>
     <div class="section-label">Domain-specific additions (editable):</div>
-    <textarea class="editable" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">${Array.isArray(initial) ? initial.join('\n') : ''}</textarea>
+    <textarea class="editable" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off">${initialText}</textarea>
   `;
   const bodySecret = `
     <div class="row">
       <input id="sec" type="password" placeholder="sk-..." autocomplete="off" />
       <button id="toggle" title="Show/Hide">👁</button>
     </div>`;
-  const bodyInfo = `<textarea class="readonly" readonly spellcheck="false" style="height:auto;min-height:60px;max-height:300px;">${
-    Array.isArray(initial) ? initial.join('\n') : String(initial)
-  }</textarea>`;
+  const bodyInfo = `<textarea class="readonly" readonly spellcheck="false" style="height:auto;min-height:60px;max-height:300px;">${initialText}</textarea>`;
 
   let bodyContent, actionsContent;
   if (mode === 'info') {
@@ -70,13 +69,13 @@ export function openEditor({ title, hint = 'One item per line', mode = 'list', i
   }
 
   wrap.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true" aria-label="${title}">
-      <h3>${title}</h3>
+    <div class="modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <h3>${escapeHtml(title)}</h3>
       ${bodyContent}
       <div class="actions">
         ${actionsContent}
       </div>
-      <p class="hint">${hint}</p>
+      <p class="hint">${escapeHtml(hint)}</p>
     </div>`;
   shadow.append(style, wrap);
   document.body.appendChild(host);
@@ -164,14 +163,8 @@ export function openKeyDialog(storage, extra, apiKeyDialogShown) {
       apiKeyDialogShown.value = false;
     },
     onValidate: async (val) => {
-      const key = val || await storage.get(STORAGE_KEYS.OPENAI_KEY, '');
-      if (!key) { openInfo('No key to test'); return; }
-      try {
-        await xhrGet('https://api.openai.com/v1/models', { Authorization: `Bearer ${key}` });
-        openInfo('Validation OK (HTTP 200)');
-      } catch (e) {
-        openInfo(`Validation failed: ${e.message || e}`);
-      }
+      const res = await validateApiKey(storage, val);
+      openInfo(res.ok ? 'Validation OK (HTTP 200)' : res.message);
     }
   });
 }
@@ -249,14 +242,9 @@ export function openWelcomeDialog(storage, openEditor, openInfo) {
         openInfo('API key saved! The script will now work on all websites. Reload any page to see it in action.');
       },
       onValidate: async (val) => {
-        const key = val || await storage.get(STORAGE_KEYS.OPENAI_KEY, '');
-        if (!key) { openInfo('Please enter your API key first'); return; }
-        try {
-          await xhrGet('https://api.openai.com/v1/models', { Authorization: `Bearer ${key}` });
-          openInfo('Validation OK! Click Save to continue.');
-        } catch (e) {
-          openInfo(`Validation failed: ${e.message || e}`);
-        }
+        const res = await validateApiKey(storage, val);
+        if (res.ok) openInfo('Validation OK! Click Save to continue.');
+        else openInfo(res.message === 'No key to test' ? 'Please enter your API key first' : res.message);
       }
     });
   });
@@ -659,7 +647,7 @@ export function showLongHeadlineDialog(elements, HOST, CFG) {
         <div class="actions">
           <button class="btn secondary skip">Skip These</button>
           <button class="btn primary process-once">Process Once</button>
-          <button class="btn success remember">Process & Remember for ${HOST}</button>
+          <button class="btn success remember">Process & Remember for ${escapeHtml(HOST)}</button>
         </div>
       </div>
     `;

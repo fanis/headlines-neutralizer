@@ -3,7 +3,6 @@
  */
 
 import { UI_ATTR, STORAGE_KEYS, TEMPERATURE_ORDER } from './config.js';
-import { log, textTrim } from './utils.js';
 import { escapeHtml } from './utils.js';
 
 let badge = null;
@@ -12,6 +11,10 @@ let isBadgeDragging = false;
 let badgeDragOffsetY = 0;
 let boundOnBadgeDrag = null;
 let boundStopBadgeDrag = null;
+// Document-level dismiss handlers; kept as module state so re-creating the
+// badge (e.g. after the site wipes the DOM) doesn't stack up dead listeners.
+let dismissClickHandler = null;
+let dismissKeyHandler = null;
 
 /**
  * Ensure badge exists and is rendered
@@ -85,7 +88,8 @@ export function ensureBadge(opts) {
   const header = badge.querySelector('.badge-header');
   const handle = badge.querySelector('.badge-handle');
 
-  header.addEventListener('mousedown', (e) => startBadgeDrag(e, BADGE_COLLAPSED, BADGE_POS, storage));
+  // Pointer events cover mouse AND touch (Android/iOS userscript managers)
+  header.addEventListener('pointerdown', (e) => startBadgeDrag(e, BADGE_COLLAPSED, BADGE_POS, storage));
   handle.addEventListener('click', () => toggleBadgeCollapse(storage, BADGE_COLLAPSED, BADGE_POS, badge));
 
   badge.querySelector('.neutralizer-action').addEventListener('click', () => onBadgeAction(restoreOriginals, reapplyFromCache));
@@ -99,13 +103,17 @@ export function ensureBadge(opts) {
     if (!wasOpen) positionPopover(popover);
   });
 
-  // Close popover on click-outside
-  document.addEventListener('click', (e) => {
-    if (!badge.contains(e.target)) closePopover();
-  });
-  document.addEventListener('keydown', (e) => {
+  // Close popover on click-outside (replace any handlers from a previous badge)
+  if (dismissClickHandler) document.removeEventListener('click', dismissClickHandler);
+  if (dismissKeyHandler) document.removeEventListener('keydown', dismissKeyHandler);
+  dismissClickHandler = (e) => {
+    if (badge && !badge.contains(e.target)) closePopover();
+  };
+  dismissKeyHandler = (e) => {
     if (e.key === 'Escape') closePopover();
-  });
+  };
+  document.addEventListener('click', dismissClickHandler);
+  document.addEventListener('keydown', dismissKeyHandler);
 
   // Popover action items
   popover.querySelectorAll('.neutralizer-popover-item').forEach(btn => {
@@ -186,11 +194,12 @@ function startBadgeDrag(e, BADGE_COLLAPSED, BADGE_POS, storage) {
   const rect = badge.getBoundingClientRect();
   badgeDragOffsetY = e.clientY - rect.top;
 
-  boundOnBadgeDrag = (e) => onBadgeDrag(e, BADGE_POS);
+  boundOnBadgeDrag = (ev) => onBadgeDrag(ev, BADGE_POS);
   boundStopBadgeDrag = () => stopBadgeDrag(storage, BADGE_POS);
 
-  document.addEventListener('mousemove', boundOnBadgeDrag);
-  document.addEventListener('mouseup', boundStopBadgeDrag);
+  document.addEventListener('pointermove', boundOnBadgeDrag);
+  document.addEventListener('pointerup', boundStopBadgeDrag);
+  document.addEventListener('pointercancel', boundStopBadgeDrag);
 
   e.preventDefault();
 }
@@ -219,11 +228,12 @@ function stopBadgeDrag(storage, BADGE_POS) {
   badge.classList.remove('neutralizer-dragging');
 
   if (boundOnBadgeDrag) {
-    document.removeEventListener('mousemove', boundOnBadgeDrag);
+    document.removeEventListener('pointermove', boundOnBadgeDrag);
     boundOnBadgeDrag = null;
   }
   if (boundStopBadgeDrag) {
-    document.removeEventListener('mouseup', boundStopBadgeDrag);
+    document.removeEventListener('pointerup', boundStopBadgeDrag);
+    document.removeEventListener('pointercancel', boundStopBadgeDrag);
     boundStopBadgeDrag = null;
   }
 

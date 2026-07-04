@@ -367,12 +367,12 @@ describe('Utility Functions', () => {
     });
 
     it('should preserve curly quotes', () => {
-      const original = 'Mayor says "We will rebuild"';
-      const rewritten = 'Mayor announces "reconstruction plans"';
+      const original = 'Mayor says “We will rebuild”';
+      const rewritten = 'Mayor announces “reconstruction plans”';
 
       const result = quoteProtect(original, rewritten);
 
-      expect(result).toContain('"We will rebuild"');
+      expect(result).toContain('“We will rebuild”');
     });
 
     it('should preserve guillemets', () => {
@@ -390,8 +390,26 @@ describe('Utility Functions', () => {
 
       const result = quoteProtect(original, rewritten);
 
-      // The function replaces quotes sequentially, so the last quote wins
-      expect(result).toContain('"goodbye"');
+      // Each quoted span is restored in order; rewritten prose is kept
+      expect(result).toBe('He greeted "hello" and she departed "goodbye"');
+    });
+
+    it('should insert quote text literally even when it contains $ patterns', () => {
+      const original = 'CEO says "$1M & $& more"';
+      const rewritten = 'CEO claims "large sums"';
+
+      const result = quoteProtect(original, rewritten);
+
+      expect(result).toContain('"$1M & $& more"');
+    });
+
+    it('should leave extra rewritten quotes untouched when original has fewer', () => {
+      const original = 'Plain headline with no quotes';
+      const rewritten = 'A "quoted" rewrite';
+
+      const result = quoteProtect(original, rewritten);
+
+      expect(result).toBe('A "quoted" rewrite');
     });
 
     it('should handle text without quotes', () => {

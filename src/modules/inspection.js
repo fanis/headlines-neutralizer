@@ -3,10 +3,10 @@
  */
 
 import { UI_ATTR, CFG, CARD_SELECTOR, UI_CONTAINERS, STORAGE_KEYS } from './config.js';
-import { textTrim, normalizeSpace, withinLen, escapeHtml } from './utils.js';
+import { textTrim, withinLen, escapeHtml } from './utils.js';
 import { compiledSelectors } from './selectors.js';
 import { isLikelyKicker } from './scoring.js';
-import { isExcluded } from './dom.js';
+import { isExcluded, publisherOptOut } from './dom.js';
 
 let inspectionOverlay = null;
 let inspectedElement = null;
@@ -306,7 +306,7 @@ function diagnoseElement(el, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_GLOBAL,
   const globalExclusions = findMatchingExclusions(el, EXCLUDE_GLOBAL);
   const domainExclusions = findMatchingExclusions(el, EXCLUDE_DOMAIN);
 
-  const hasOptOut = document.querySelector('meta[name="neutralizer"][content="opt-out"]') !== null;
+  const hasOptOut = publisherOptOut();
   const isProcessed = !isExcluded(el, EXCLUDE) && (autoDetect.matched || globalSelectors.length > 0 || domainSelectors.length > 0);
 
   return {
@@ -515,9 +515,9 @@ function showDiagnosticDialog(el, HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCL
 
       <div class="section">
         <div class="section-title">Element Information</div>
-        <div class="info-row"><span class="info-label">Tag:</span> &lt;${diag.tag}&gt;</div>
-        <div class="info-row"><span class="info-label">ID:</span> ${diag.id || '(none)'}</div>
-        <div class="info-row"><span class="info-label">Classes:</span> ${diag.classes || '(none)'}</div>
+        <div class="info-row"><span class="info-label">Tag:</span> &lt;${escapeHtml(diag.tag)}&gt;</div>
+        <div class="info-row"><span class="info-label">ID:</span> ${escapeHtml(diag.id) || '(none)'}</div>
+        <div class="info-row"><span class="info-label">Classes:</span> ${escapeHtml(diag.classes) || '(none)'}</div>
         <div class="info-row"><span class="info-label">Text:</span> "${escapeHtml(diag.text)}"</div>
         <div class="info-row"><span class="info-label">CSS Selector:</span> <span class="code">${escapeHtml(diag.selector)}</span></div>
       </div>
@@ -535,7 +535,7 @@ function showDiagnosticDialog(el, HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCL
       </div>
 
       <div class="section">
-        <div class="section-title">Domain Selectors (${HOST})</div>
+        <div class="section-title">Domain Selectors (${escapeHtml(HOST)})</div>
         ${domainSelectorsHTML}
       </div>
 
@@ -545,7 +545,7 @@ function showDiagnosticDialog(el, HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCL
       </div>
 
       <div class="section">
-        <div class="section-title">Domain Exclusions (${HOST})</div>
+        <div class="section-title">Domain Exclusions (${escapeHtml(HOST)})</div>
         ${domainExclusionsHTML}
       </div>
 
@@ -578,12 +578,17 @@ function showDiagnosticDialog(el, HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCL
   shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
 
   shadow.querySelector('.copy-selector').addEventListener('click', () => {
-    navigator.clipboard.writeText(diag.selector).then(() => {
-      const btn = shadow.querySelector('.copy-selector');
-      const orig = btn.textContent;
-      btn.textContent = '✓ Copied!';
+    const btn = shadow.querySelector('.copy-selector');
+    const orig = btn.textContent;
+    const flash = (text) => {
+      btn.textContent = text;
       setTimeout(() => btn.textContent = orig, 2000);
-    });
+    };
+    // Clipboard access can be denied (permissions / insecure context)
+    if (!navigator.clipboard?.writeText) { flash('✗ Clipboard unavailable'); return; }
+    navigator.clipboard.writeText(diag.selector)
+      .then(() => flash('✓ Copied!'))
+      .catch(() => flash('✗ Copy failed'));
   });
 
   attachActionHandlers(shadow, diag, close, storage, DOMAIN_SELECTORS, DOMAIN_EXCLUDES, HOST, SELECTORS_GLOBAL, EXCLUDE_GLOBAL, openInfo);
