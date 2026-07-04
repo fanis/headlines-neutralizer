@@ -27,8 +27,8 @@ npm run test:all   # Run all tests
 ## Testing Notes
 
 - Tests are DOM-structural: create elements, verify structure/classes/attributes. Avoid importing modules that need browser APIs (GM_*, shadow DOM in jsdom has limits)
-- 5 "unhandled errors" from `api.test.js` error-path tests are pre-existing and expected - not failures
 - Run `npm test -- --run` for single-run mode (no watch)
+- The suite must finish with zero unhandled errors (vitest exits non-zero on unhandled rejections, which fails CI). In error-path tests, attach `expect(...).rejects` BEFORE `await vi.runAllTimersAsync()`, not after
 
 ## Custom Skills
 
