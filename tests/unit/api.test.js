@@ -694,12 +694,14 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      const resultPromise = rewriteBatch(mockStorage, ['Test']);
-      await vi.runAllTimersAsync();
-      await expect(resultPromise).rejects.toMatchObject({
+      // Attach the rejection handler before running timers, otherwise the
+      // rejection fires unhandled and vitest exits non-zero
+      const assertion = expect(rewriteBatch(mockStorage, ['Test'])).rejects.toMatchObject({
         message: 'No output_text/content from API',
         status: 400
       });
+      await vi.runAllTimersAsync();
+      await assertion;
     });
 
     it('should throw error when response is not a JSON array', async () => {
@@ -714,12 +716,12 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      const resultPromise = rewriteBatch(mockStorage, ['Test']);
-      await vi.runAllTimersAsync();
-      await expect(resultPromise).rejects.toMatchObject({
+      const assertion = expect(rewriteBatch(mockStorage, ['Test'])).rejects.toMatchObject({
         message: 'API did not return a JSON array',
         status: 400
       });
+      await vi.runAllTimersAsync();
+      await assertion;
     });
 
     it('should handle network errors gracefully', async () => {
@@ -729,9 +731,9 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      const resultPromise = rewriteBatch(mockStorage, ['Test']);
+      const assertion = expect(rewriteBatch(mockStorage, ['Test'])).rejects.toThrow('Network failure');
       await vi.runAllTimersAsync();
-      await expect(resultPromise).rejects.toThrow('Network failure');
+      await assertion;
     });
 
     it('should handle HTTP error responses', async () => {
@@ -741,9 +743,9 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      const resultPromise = rewriteBatch(mockStorage, ['Test']);
+      const assertion = expect(rewriteBatch(mockStorage, ['Test'])).rejects.toThrow('HTTP 500');
       await vi.runAllTimersAsync();
-      await expect(resultPromise).rejects.toThrow('HTTP 500');
+      await assertion;
     });
 
     it('should handle malformed JSON responses', async () => {
@@ -753,9 +755,9 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      const resultPromise = rewriteBatch(mockStorage, ['Test']);
+      const assertion = expect(rewriteBatch(mockStorage, ['Test'])).rejects.toThrow();
       await vi.runAllTimersAsync();
-      await expect(resultPromise).rejects.toThrow();
+      await assertion;
     });
 
     it('should send correct request structure', async () => {
