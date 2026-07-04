@@ -1,0 +1,138 @@
+name: Cut Release
+
+# Manually triggered release: bumps the version everywhere, promotes the
+# [Unreleased] changelog section, runs tests, builds, commits, tags, and
+# publishes a GitHub Release with the built userscript attached.
+#
+# Note: this workflow creates the release itself instead of relying on the
+# tag-triggered release.yml — tags pushed with the built-in GITHUB_TOKEN
+# intentionally do not trigger other workflows. release.yml still covers
+# tags pushed manually from a developer machine.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      summary:
+        description: 'Short release summary (optional, used in the commit message)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # npm install (not ci): package-lock.json is gitignored in this repo
+      - name: Install dependencies
+        run: npm install
+
+      - name: Verify changelog has an Unreleased section with content
+        run: |
+          CONTENT=$(awk '
+            /^## \[Unreleased\]/ { found=1; next }
+            /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md | grep -v '^[[:space:]]*$' || true)
+          if [ -z "$CONTENT" ]; then
+            echo "::error::CHANGELOG.md has no non-empty [Unreleased] section. Add release notes before cutting a release."
+            exit 1
+          fi
+
+      - name: Bump version
+        id: version
+        run: |
+          NEW_VERSION=$(npm version "${{ inputs.bump }}" --no-git-tag-version)
+          NEW_VERSION=${NEW_VERSION#v}
+          echo "VERSION=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+          # Version lives in 3 files + README (see CLAUDE.md)
+          sed -i "s|^// @version      .*|// @version      $NEW_VERSION|" src/banner.txt src/main.js
+          sed -i "s|^> \*\*Latest Version\*\*: [0-9.]*|> **Latest Version**: $NEW_VERSION|" README.md
+
+          # Promote [Unreleased] to the new version
+          sed -i "s|^## \[Unreleased\]|## [$NEW_VERSION] - $(date -u +%Y-%m-%d)|" CHANGELOG.md
+
+          # All version references must agree
+          for f in src/banner.txt src/main.js; do
+            grep -q "^// @version      $NEW_VERSION\$" "$f" || { echo "::error::Version not updated in $f"; exit 1; }
+          done
+          grep -q "\"version\": \"$NEW_VERSION\"" package.json || { echo "::error::Version not updated in package.json"; exit 1; }
+
+      - name: Run unit tests
+        run: npm test -- --run
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - name: Commit and tag
+        env:
+          SUMMARY: ${{ inputs.summary }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          if [ -n "$SUMMARY" ]; then
+            MSG="Release v$VERSION: $SUMMARY"
+          else
+            MSG="Release v$VERSION"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json src/banner.txt src/main.js README.md CHANGELOG.md dist/headlines-neutralizer.js
+          git commit -m "$MSG"
+          git tag "$VERSION"
+          git push origin HEAD
+          git push origin "$VERSION"
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          CHANGELOG=$(awk -v ver="$VERSION" '
+            /^## \[/ {
+              if (found) exit
+              if ($0 ~ "\\[" ver "\\]") found=1
+              next
+            }
+            found { print }
+          ' CHANGELOG.md)
+          echo "CHANGELOG<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGELOG" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: v${{ steps.version.outputs.VERSION }}
+          body: ${{ steps.changelog.outputs.CHANGELOG }}
+          files: dist/headlines-neutralizer.js
+          draft: false
+          prerelease: false
