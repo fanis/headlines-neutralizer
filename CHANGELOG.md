@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Added
+- **Custom model**: the model selection dialog now includes a "Custom model" option where you can enter any OpenAI model ID with your own input/output prices per 1M tokens, a reasoning effort (minimal/low/medium/high, or automatic by model family), and an optional Fast mode flag. Cost statistics use the prices you enter.
+- **Model removal notice**: if a previously selected model is removed from the list in a later version, the script falls back to the default GPT-4.1 Nano Fast (never a more expensive model) and shows a one-time toast with a link to the model settings.
+
+### Changed
+- **Model lineup refresh** (pricing source: OpenAI pricing docs, 2026-07-31):
+  - Added GPT-5.6 Luna ($0.20/$1.20 per 1M tokens) and GPT-5.6 Terra Fast ($4.00/$24.00)
+  - Removed GPT-5 Mini and GPT-5.2 Priority: adjacent price points are covered by the new GPT-5.6 models
+  - Corrected the priority-tier prices: OpenAI's Fast mode (renamed from priority processing on 2026-07-30) is billed at roughly 2x standard, so GPT-4.1 Nano Fast is $0.20/$0.80 and GPT-5 Mini Fast is $0.45/$3.60; the old "no additional cost" assumption no longer holds
+  - Renamed the "Priority" labels to "Fast", following OpenAI's terminology (the API `service_tier` value is unchanged)
+- Pricing used for cost statistics now re-syncs to the active model at startup, fixing stale rates after a pricing or lineup change
+
 ## [2.5.0] - 2026-07-04
 
 ### Fixed

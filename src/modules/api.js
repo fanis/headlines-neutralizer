@@ -2,7 +2,7 @@
  * OpenAI API integration and token tracking
  */
 
-import { CFG, STORAGE_KEYS, DEFAULT_PRICING, MODEL_OPTIONS } from './config.js';
+import { CFG, STORAGE_KEYS, DEFAULT_PRICING, MODEL_OPTIONS, CUSTOM_MODEL_ID, REASONING_EFFORTS } from './config.js';
 import { log } from './utils.js';
 
 /**
@@ -18,9 +18,44 @@ export let API_TOKENS = {
 export let PRICING = { ...DEFAULT_PRICING };
 
 /**
+ * Build a MODEL_OPTIONS entry from a user-defined model definition
+ */
+export function buildCustomModelOption(def) {
+  return {
+    name: `Custom (${def.apiModel})`,
+    apiModel: def.apiModel,
+    description: 'User-defined model and pricing',
+    inputPer1M: def.inputPer1M,
+    outputPer1M: def.outputPer1M,
+    recommended: false,
+    priority: !!def.priority,
+    reasoning: REASONING_EFFORTS.includes(def.reasoning) ? def.reasoning : '',
+    custom: true
+  };
+}
+
+function isValidCustomModelDef(def) {
+  return def && typeof def.apiModel === 'string' && def.apiModel.trim() !== '' &&
+    Number.isFinite(def.inputPer1M) && def.inputPer1M >= 0 &&
+    Number.isFinite(def.outputPer1M) && def.outputPer1M >= 0;
+}
+
+/**
  * Initialize API tokens and pricing from storage
  */
 export async function initApiTracking(storage) {
+  // Register the user-defined custom model, if configured, so model loading
+  // and the selection dialog can treat it like any other entry
+  try {
+    const stored = await storage.get(STORAGE_KEYS.CUSTOM_MODEL, '');
+    if (stored) {
+      const def = JSON.parse(stored);
+      if (isValidCustomModelDef(def)) {
+        MODEL_OPTIONS[CUSTOM_MODEL_ID] = buildCustomModelOption(def);
+      }
+    }
+  } catch {}
+
   try {
     const stored = await storage.get(STORAGE_KEYS.API_TOKENS, '');
     if (stored) {
@@ -270,8 +305,12 @@ export async function rewriteBatch(storage, texts) {
     input: JSON.stringify(safeInputs)
   };
 
-  // GPT-5 models are reasoning models - use minimal reasoning instead of temperature
-  if (apiModel.startsWith('gpt-5')) {
+  // Reasoning effort: custom models with a configured effort use it; otherwise
+  // pick automatically by model family - GPT-5 models are reasoning models
+  // (minimal reasoning instead of temperature), older models get temperature
+  if (modelConfig.custom && modelConfig.reasoning) {
+    bodyObj.reasoning = { effort: modelConfig.reasoning };
+  } else if (apiModel.startsWith('gpt-5')) {
     bodyObj.reasoning = { effort: 'minimal' };
   } else {
     bodyObj.temperature = CFG.temperature;

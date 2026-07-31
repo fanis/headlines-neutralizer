@@ -40,55 +40,64 @@ export const CFG = {
 export const UI_ATTR = 'data-neutralizer-ui';
 
 // Available models with pricing
-// Pricing source: https://openai.com/api/pricing/ (verified 2026-01)
-// Note: Priority tier (service_tier: 'priority') provides faster processing at no additional cost
+// Pricing source: https://developers.openai.com/api/docs/pricing (as of 2026-07-31)
+// Note: OpenAI renamed "priority processing" to "Fast mode" on 2026-07-30 and it
+// is billed at roughly 2x the standard tier (the old "no additional cost" note no
+// longer holds). service_tier "priority" remains a valid API alias. Storage keys
+// keep the -priority suffix so existing user selections are preserved.
 export const MODEL_OPTIONS = {
   'gpt-5-nano': {
     name: 'GPT-5 Nano',
     apiModel: 'gpt-5-nano',
-    description: 'Ultra-affordable latest generation - Best value',
+    description: 'Ultra-affordable - Best value',
     inputPer1M: 0.05,
     outputPer1M: 0.40,
     recommended: false,
     priority: false
   },
-  'gpt-5-mini': {
-    name: 'GPT-5 Mini',
-    apiModel: 'gpt-5-mini',
-    description: 'Better quality, still very affordable',
-    inputPer1M: 0.25,
-    outputPer1M: 2.00,
+  'gpt-5.6-luna': {
+    name: 'GPT-5.6 Luna',
+    apiModel: 'gpt-5.6-luna',
+    description: 'Newest generation at low cost',
+    inputPer1M: 0.20,
+    outputPer1M: 1.20,
     recommended: false,
     priority: false
   },
   'gpt-4.1-nano-priority': {
-    name: 'GPT-4.1 Nano Priority',
+    name: 'GPT-4.1 Nano Fast',
     apiModel: 'gpt-4.1-nano',
     description: 'Fast processing, affordable - Best for headlines',
-    inputPer1M: 0.10,
-    outputPer1M: 0.40,
+    inputPer1M: 0.20,
+    outputPer1M: 0.80,
     recommended: true,
     priority: true
   },
   'gpt-5-mini-priority': {
-    name: 'GPT-5 Mini Priority',
+    name: 'GPT-5 Mini Fast',
     apiModel: 'gpt-5-mini',
     description: 'Better quality + faster processing',
-    inputPer1M: 0.25,
-    outputPer1M: 2.00,
+    inputPer1M: 0.45,
+    outputPer1M: 3.60,
     recommended: false,
     priority: true
   },
-  'gpt-5.2-priority': {
-    name: 'GPT-5.2 Priority',
-    apiModel: 'gpt-5.2',
-    description: 'Premium quality + fastest processing (most expensive)',
-    inputPer1M: 1.75,
-    outputPer1M: 14.00,
+  'gpt-5.6-terra-priority': {
+    name: 'GPT-5.6 Terra Fast',
+    apiModel: 'gpt-5.6-terra',
+    description: 'Newest flagship tier + faster processing (most expensive)',
+    inputPer1M: 4.00,
+    outputPer1M: 24.00,
     recommended: false,
     priority: true
   }
 };
+
+// Identifier for the user-defined model entry in MODEL_OPTIONS
+export const CUSTOM_MODEL_ID = 'custom';
+
+// Valid reasoning effort values for the custom model definition
+export const REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high'];
 
 // Temperature levels mapping
 export const TEMPERATURE_LEVELS = {
@@ -123,6 +132,7 @@ export const STORAGE_KEYS = {
   PRICING: 'neutralizer_pricing_v1',
   CACHE: 'neutralizer_cache_v1',
   MODEL: 'neutralizer_model_v1',
+  CUSTOM_MODEL: 'neutralizer_custom_model_v1',
   OPENAI_KEY: 'OPENAI_KEY'
 };
 
@@ -139,13 +149,13 @@ export const DEFAULT_EXCLUDES = {
   ancestors: ['footer', 'nav', 'aside', '[role="navigation"]', '.breadcrumbs', '[aria-label*="breadcrumb" i]']
 };
 
-// Default API pricing (gpt-4.1-nano-priority, verified January 2026)
+// Default API pricing (gpt-4.1-nano fast tier, verified 2026-07-31)
 export const DEFAULT_PRICING = {
-  model: 'GPT-4.1 Nano Priority',
-  inputPer1M: 0.10,    // USD per 1M input tokens
-  outputPer1M: 0.40,   // USD per 1M output tokens
-  lastUpdated: '2026-01-23',
-  source: 'https://openai.com/api/pricing/'
+  model: 'GPT-4.1 Nano Fast',
+  inputPer1M: 0.20,    // USD per 1M input tokens
+  outputPer1M: 0.80,   // USD per 1M output tokens
+  lastUpdated: '2026-07-31',
+  source: 'https://developers.openai.com/api/docs/pricing'
 };
 
 // Heuristic selectors and patterns

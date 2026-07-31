@@ -2,9 +2,9 @@
  * Settings dialogs and management
  */
 
-import { UI_ATTR, TEMPERATURE_LEVELS, TEMPERATURE_ORDER, STORAGE_KEYS, MODEL_OPTIONS } from './config.js';
+import { UI_ATTR, TEMPERATURE_LEVELS, TEMPERATURE_ORDER, STORAGE_KEYS, MODEL_OPTIONS, CUSTOM_MODEL_ID, REASONING_EFFORTS } from './config.js';
 import { parseLines, escapeHtml } from './utils.js';
-import { validateApiKey } from './api.js';
+import { validateApiKey, buildCustomModelOption } from './api.js';
 
 /**
  * Polymorphic editor for lists, secrets, domains, and info display
@@ -512,12 +512,22 @@ export function openModelSelectionDialog(storage, currentModel, onSelect) {
     .btn-save:hover{background:#1557b0}
     .btn-cancel{background:#e0e0e0;color:#333}
     .btn-cancel:hover{background:#d0d0d0}
+    .custom-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+    .custom-fields label{font:12px/1.4 system-ui,sans-serif;display:flex;flex-direction:column;gap:4px}
+    .custom-fields .custom-full{grid-column:1/-1}
+    .custom-fields .custom-fast{flex-direction:row;align-items:center;gap:8px;grid-column:1/-1}
+    .custom-fields input[type=text],.custom-fields input[type=number],.custom-fields select{
+      padding:8px;border:2px solid #e0e0e0;border-radius:6px;width:100%;
+      font:13px system-ui,sans-serif;color:#1a1a1a;background:#fff;box-sizing:border-box}
+    .custom-fields input:focus,.custom-fields select:focus{outline:none;border-color:#1a73e8}
+    .custom-error{margin-top:8px;font:600 12px system-ui,sans-serif;color:#d93025}
+    .option.selected .custom-error{color:#ffd7d4}
   `;
 
   const wrap = document.createElement('div');
   wrap.className = 'wrap';
 
-  const optionsHtml = Object.keys(MODEL_OPTIONS).map(modelId => {
+  const optionsHtml = Object.keys(MODEL_OPTIONS).filter(id => id !== CUSTOM_MODEL_ID).map(modelId => {
     const model = MODEL_OPTIONS[modelId];
     const isSelected = modelId === currentModel;
     const badge = model.recommended ? '<span class="option-badge">Recommended</span>' : '';
@@ -533,11 +543,48 @@ export function openModelSelectionDialog(storage, currentModel, onSelect) {
     `;
   }).join('');
 
+  const custom = MODEL_OPTIONS[CUSTOM_MODEL_ID];
+  const customHtml = `
+    <div class="option ${currentModel === CUSTOM_MODEL_ID ? 'selected' : ''}" data-model="${CUSTOM_MODEL_ID}">
+      <div class="option-header">
+        <div class="option-title">Custom model</div>
+      </div>
+      <div class="option-desc">Use any OpenAI model ID with the pricing you enter (see the OpenAI pricing page)</div>
+      <div class="custom-fields">
+        <label class="custom-full">Model ID
+          <input type="text" class="custom-id" placeholder="e.g. gpt-5.6-sol" value="${custom ? escapeHtml(custom.apiModel) : ''}">
+        </label>
+        <label>$ per 1M input tokens
+          <input type="number" class="custom-in" min="0" step="0.01" value="${custom ? custom.inputPer1M : ''}">
+        </label>
+        <label>$ per 1M output tokens
+          <input type="number" class="custom-out" min="0" step="0.01" value="${custom ? custom.outputPer1M : ''}">
+        </label>
+        <label class="custom-full">Reasoning effort
+          <select class="custom-reasoning">
+            <option value="">Automatic (reasoning models: minimal; others: temperature)</option>
+            ${REASONING_EFFORTS.map(effort => `
+              <option value="${effort}" ${custom && custom.reasoning === effort ? 'selected' : ''}>
+                ${effort.charAt(0).toUpperCase() + effort.slice(1)}
+              </option>
+            `).join('')}
+          </select>
+        </label>
+        <label class="custom-fast">
+          <input type="checkbox" class="custom-priority" ${custom && custom.priority ? 'checked' : ''}>
+          Fast mode (faster processing, enter the Fast tier prices)
+        </label>
+      </div>
+      <div class="custom-error"></div>
+    </div>
+  `;
+
   wrap.innerHTML = `
     <div class="modal">
       <h3>AI Model Selection</h3>
       <p class="subtitle">Choose the OpenAI model for headline neutralization. Higher-tier models cost more but may produce better results.</p>
       ${optionsHtml}
+      ${customHtml}
       <div class="actions">
         <button class="btn btn-cancel">Cancel</button>
         <button class="btn btn-save">Save & Reload</button>
@@ -564,6 +611,26 @@ export function openModelSelectionDialog(storage, currentModel, onSelect) {
   const close = () => host.remove();
 
   btnSave.addEventListener('click', async () => {
+    if (selectedModel === CUSTOM_MODEL_ID) {
+      const apiModel = shadow.querySelector('.custom-id').value.trim();
+      const inputPer1M = parseFloat(shadow.querySelector('.custom-in').value);
+      const outputPer1M = parseFloat(shadow.querySelector('.custom-out').value);
+      const priority = shadow.querySelector('.custom-priority').checked;
+      const reasoningValue = shadow.querySelector('.custom-reasoning').value;
+      const reasoning = REASONING_EFFORTS.includes(reasoningValue) ? reasoningValue : '';
+      const errEl = shadow.querySelector('.custom-error');
+      if (!apiModel) {
+        errEl.textContent = 'Enter a model ID.';
+        return;
+      }
+      if (!Number.isFinite(inputPer1M) || inputPer1M < 0 || !Number.isFinite(outputPer1M) || outputPer1M < 0) {
+        errEl.textContent = 'Enter non-negative input and output prices per 1M tokens.';
+        return;
+      }
+      const def = { apiModel, inputPer1M, outputPer1M, priority, reasoning };
+      await storage.set(STORAGE_KEYS.CUSTOM_MODEL, JSON.stringify(def));
+      MODEL_OPTIONS[CUSTOM_MODEL_ID] = buildCustomModelOption(def);
+    }
     if (!MODEL_OPTIONS[selectedModel]) return;
     await onSelect(selectedModel);
     btnSave.textContent = 'Saved! Reloading...';
@@ -577,6 +644,51 @@ export function openModelSelectionDialog(storage, currentModel, onSelect) {
 
   wrap.setAttribute('tabindex', '-1');
   wrap.focus();
+}
+
+/**
+ * Show a small self-dismissing toast with an optional action link
+ */
+export function showToast(message, { actionLabel, onAction, timeoutMs = 15000 } = {}) {
+  const host = document.createElement('div');
+  host.setAttribute(UI_ATTR, '');
+  const shadow = host.attachShadow({ mode: 'open' });
+  const style = document.createElement('style');
+  style.textContent = `
+    .toast{position:fixed;right:16px;bottom:16px;z-index:2147483647;max-width:340px;
+           background:#1a1a1a;color:#fff;border-radius:10px;padding:14px 32px 14px 16px;
+           box-shadow:0 6px 24px rgba(0,0,0,.35);font:13px/1.5 system-ui,sans-serif}
+    .toast a{color:#8ab4f8;cursor:pointer;text-decoration:underline;font-weight:600;white-space:nowrap}
+    .close{position:absolute;top:8px;right:10px;cursor:pointer;opacity:.6;font:16px/1 system-ui,sans-serif}
+    .close:hover{opacity:1}
+  `;
+  const div = document.createElement('div');
+  div.className = 'toast';
+  div.innerHTML = '<span class="close">&times;</span><span class="msg"></span>';
+  div.querySelector('.msg').textContent = message;
+
+  const dismiss = () => host.remove();
+
+  if (actionLabel && onAction) {
+    const link = document.createElement('a');
+    link.textContent = actionLabel;
+    link.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dismiss();
+      onAction();
+    });
+    div.querySelector('.msg').append(' ');
+    div.querySelector('.msg').appendChild(link);
+  }
+
+  div.querySelector('.close').addEventListener('click', (e) => {
+    e.stopPropagation();
+    dismiss();
+  });
+
+  shadow.append(style, div);
+  document.body.appendChild(host);
+  setTimeout(dismiss, timeoutMs);
 }
 
 /**

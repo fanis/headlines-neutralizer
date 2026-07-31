@@ -29,7 +29,7 @@ describe('Config', () => {
     it('should have exactly one recommended model', () => {
       const recommendedModels = Object.values(MODEL_OPTIONS).filter(m => m.recommended);
       expect(recommendedModels).toHaveLength(1);
-      expect(recommendedModels[0].name).toBe('GPT-4.1 Nano Priority');
+      expect(recommendedModels[0].name).toBe('GPT-4.1 Nano Fast');
     });
 
     it('should have gpt-5-nano as the cheapest model', () => {
@@ -39,19 +39,19 @@ describe('Config', () => {
       expect(cheapest.apiModel).toBe('gpt-5-nano');
     });
 
-    it('should have gpt-5.2-priority as the most expensive model', () => {
+    it('should have gpt-5.6-terra-priority as the most expensive model', () => {
       const mostExpensive = Object.values(MODEL_OPTIONS).reduce((max, m) =>
         m.outputPer1M > max.outputPer1M ? m : max
       );
-      expect(mostExpensive.apiModel).toBe('gpt-5.2');
+      expect(mostExpensive.apiModel).toBe('gpt-5.6-terra');
     });
 
     it('should have correct priority flags', () => {
       expect(MODEL_OPTIONS['gpt-5-nano'].priority).toBe(false);
-      expect(MODEL_OPTIONS['gpt-5-mini'].priority).toBe(false);
+      expect(MODEL_OPTIONS['gpt-5.6-luna'].priority).toBe(false);
       expect(MODEL_OPTIONS['gpt-4.1-nano-priority'].priority).toBe(true);
       expect(MODEL_OPTIONS['gpt-5-mini-priority'].priority).toBe(true);
-      expect(MODEL_OPTIONS['gpt-5.2-priority'].priority).toBe(true);
+      expect(MODEL_OPTIONS['gpt-5.6-terra-priority'].priority).toBe(true);
     });
 
     it('should have apiModel that differs from modelId for priority models', () => {
@@ -71,10 +71,10 @@ describe('Config', () => {
   });
 
   describe('DEFAULT_PRICING', () => {
-    it('should use GPT-4.1 Nano Priority pricing by default', () => {
-      expect(DEFAULT_PRICING.model).toBe('GPT-4.1 Nano Priority');
-      expect(DEFAULT_PRICING.inputPer1M).toBe(0.10);
-      expect(DEFAULT_PRICING.outputPer1M).toBe(0.40);
+    it('should use GPT-4.1 Nano Fast pricing by default', () => {
+      expect(DEFAULT_PRICING.model).toBe('GPT-4.1 Nano Fast');
+      expect(DEFAULT_PRICING.inputPer1M).toBe(0.20);
+      expect(DEFAULT_PRICING.outputPer1M).toBe(0.80);
     });
   });
 });

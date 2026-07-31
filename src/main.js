@@ -36,7 +36,7 @@ import { HeadlineCache } from './modules/cache.js';
 import { domainPatternToRegex, listMatchesHost } from './modules/selectors.js';
 import { initApiTracking, rewriteBatch, resetApiTokens, updatePricing, calculateApiCost, validateApiKey, API_TOKENS, PRICING, isQuotaExhausted } from './modules/api.js';
 import { ensureHighlightCSS, isExcluded, getCandidateElements, applyRewrites, restoreOriginals, publisherOptOut } from './modules/dom.js';
-import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openTemperatureDialog, openModelSelectionDialog, showLongHeadlineDialog, showDiffAudit, openSelectorEditor } from './modules/settings.js';
+import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openTemperatureDialog, openModelSelectionDialog, showLongHeadlineDialog, showDiffAudit, openSelectorEditor, showToast } from './modules/settings.js';
 import { ensureBadge, updateBadgeCounts, reapplyFromCache } from './modules/badge.js';
 import { enterInspectionMode, showIncludedElements, exitIncludedElements } from './modules/inspection.js';
 
@@ -85,13 +85,30 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
     }
   } catch {}
 
-  // Load model setting
+  // Load model setting; fall back to the default model when the stored
+  // selection no longer exists in MODEL_OPTIONS (MODEL_FALLBACK triggers a
+  // one-time notice after the badge is created)
+  let MODEL_FALLBACK = '';
   try {
     const v = await storage.get(STORAGE_KEYS.MODEL, '');
-    if (v !== '' && MODEL_OPTIONS[v]) {
-      CFG.model = v;
+    if (v !== '') {
+      if (MODEL_OPTIONS[v]) {
+        CFG.model = v;
+      } else {
+        MODEL_FALLBACK = v;
+      }
     }
   } catch {}
+
+  // Keep in-memory pricing in sync with the active model, so cost statistics
+  // pick up corrected rates after a pricing or lineup change instead of using
+  // a stale stored snapshot
+  {
+    const activeModel = MODEL_OPTIONS[CFG.model];
+    PRICING.model = activeModel.name;
+    PRICING.inputPer1M = activeModel.inputPer1M;
+    PRICING.outputPer1M = activeModel.outputPer1M;
+  }
 
   // Settings functions
   async function setDebug(on) { CFG.DEBUG = !!on; await storage.set(STORAGE_KEYS.DEBUG, String(CFG.DEBUG)); location.reload(); }
@@ -519,6 +536,19 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   ensureBadge(badgeOpts());
   attachTargets(document);
   ensureObserver();
+
+  // Notify users whose saved model was removed from MODEL_OPTIONS. Persisting
+  // the fallback via setModel makes this a one-time notice.
+  if (MODEL_FALLBACK) {
+    await setModel(CFG.model);
+    showToast(
+      `Your selected AI model (${MODEL_FALLBACK}) is no longer offered. Switched to ${MODEL_OPTIONS[CFG.model].name}.`,
+      {
+        actionLabel: 'Model settings',
+        onAction: () => openModelSelectionDialog(storage, CFG.model, setModel)
+      }
+    );
+  }
 
   // Coalesce mutation bursts: collect added elements and process them in one
   // debounced pass instead of running the full selector pipeline per node.
