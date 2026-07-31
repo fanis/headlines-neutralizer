@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [2.6.1] - 2026-07-31
 
 ### Fixed
 - Model selection dialog taller than the viewport (since the custom model fields were added) could clip the Save/Cancel buttons with no way to scroll to them; the dialog now caps at 90% of the viewport height and scrolls internally
