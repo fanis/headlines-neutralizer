@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      2.5.0
+// @version      2.6.0
 // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -74,55 +74,64 @@
   const UI_ATTR = 'data-neutralizer-ui';
 
   // Available models with pricing
-  // Pricing source: https://openai.com/api/pricing/ (verified 2026-01)
-  // Note: Priority tier (service_tier: 'priority') provides faster processing at no additional cost
+  // Pricing source: https://developers.openai.com/api/docs/pricing (as of 2026-07-31)
+  // Note: OpenAI renamed "priority processing" to "Fast mode" on 2026-07-30 and it
+  // is billed at roughly 2x the standard tier (the old "no additional cost" note no
+  // longer holds). service_tier "priority" remains a valid API alias. Storage keys
+  // keep the -priority suffix so existing user selections are preserved.
   const MODEL_OPTIONS = {
     'gpt-5-nano': {
       name: 'GPT-5 Nano',
       apiModel: 'gpt-5-nano',
-      description: 'Ultra-affordable latest generation - Best value',
+      description: 'Ultra-affordable - Best value',
       inputPer1M: 0.05,
       outputPer1M: 0.40,
       recommended: false,
       priority: false
     },
-    'gpt-5-mini': {
-      name: 'GPT-5 Mini',
-      apiModel: 'gpt-5-mini',
-      description: 'Better quality, still very affordable',
-      inputPer1M: 0.25,
-      outputPer1M: 2.00,
+    'gpt-5.6-luna': {
+      name: 'GPT-5.6 Luna',
+      apiModel: 'gpt-5.6-luna',
+      description: 'Newest generation at low cost',
+      inputPer1M: 0.20,
+      outputPer1M: 1.20,
       recommended: false,
       priority: false
     },
     'gpt-4.1-nano-priority': {
-      name: 'GPT-4.1 Nano Priority',
+      name: 'GPT-4.1 Nano Fast',
       apiModel: 'gpt-4.1-nano',
       description: 'Fast processing, affordable - Best for headlines',
-      inputPer1M: 0.10,
-      outputPer1M: 0.40,
+      inputPer1M: 0.20,
+      outputPer1M: 0.80,
       recommended: true,
       priority: true
     },
     'gpt-5-mini-priority': {
-      name: 'GPT-5 Mini Priority',
+      name: 'GPT-5 Mini Fast',
       apiModel: 'gpt-5-mini',
       description: 'Better quality + faster processing',
-      inputPer1M: 0.25,
-      outputPer1M: 2.00,
+      inputPer1M: 0.45,
+      outputPer1M: 3.60,
       recommended: false,
       priority: true
     },
-    'gpt-5.2-priority': {
-      name: 'GPT-5.2 Priority',
-      apiModel: 'gpt-5.2',
-      description: 'Premium quality + fastest processing (most expensive)',
-      inputPer1M: 1.75,
-      outputPer1M: 14.00,
+    'gpt-5.6-terra-priority': {
+      name: 'GPT-5.6 Terra Fast',
+      apiModel: 'gpt-5.6-terra',
+      description: 'Newest flagship tier + faster processing (most expensive)',
+      inputPer1M: 4.00,
+      outputPer1M: 24.00,
       recommended: false,
       priority: true
     }
   };
+
+  // Identifier for the user-defined model entry in MODEL_OPTIONS
+  const CUSTOM_MODEL_ID = 'custom';
+
+  // Valid reasoning effort values for the custom model definition
+  const REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high'];
 
   // Temperature levels mapping
   const TEMPERATURE_LEVELS = {
@@ -157,6 +166,7 @@
     PRICING: 'neutralizer_pricing_v1',
     CACHE: 'neutralizer_cache_v1',
     MODEL: 'neutralizer_model_v1',
+    CUSTOM_MODEL: 'neutralizer_custom_model_v1',
     OPENAI_KEY: 'OPENAI_KEY'
   };
 
@@ -173,13 +183,13 @@
     ancestors: ['footer', 'nav', 'aside', '[role="navigation"]', '.breadcrumbs', '[aria-label*="breadcrumb" i]']
   };
 
-  // Default API pricing (gpt-4.1-nano-priority, verified January 2026)
+  // Default API pricing (gpt-4.1-nano fast tier, verified 2026-07-31)
   const DEFAULT_PRICING = {
-    model: 'GPT-4.1 Nano Priority',
-    inputPer1M: 0.10,    // USD per 1M input tokens
-    outputPer1M: 0.40,   // USD per 1M output tokens
-    lastUpdated: '2026-01-23',
-    source: 'https://openai.com/api/pricing/'
+    model: 'GPT-4.1 Nano Fast',
+    inputPer1M: 0.20,    // USD per 1M input tokens
+    outputPer1M: 0.80,   // USD per 1M output tokens
+    lastUpdated: '2026-07-31',
+    source: 'https://developers.openai.com/api/docs/pricing'
   };
 
   // Heuristic selectors and patterns
@@ -639,9 +649,44 @@
   let PRICING = { ...DEFAULT_PRICING };
 
   /**
+   * Build a MODEL_OPTIONS entry from a user-defined model definition
+   */
+  function buildCustomModelOption(def) {
+    return {
+      name: `Custom (${def.apiModel})`,
+      apiModel: def.apiModel,
+      description: 'User-defined model and pricing',
+      inputPer1M: def.inputPer1M,
+      outputPer1M: def.outputPer1M,
+      recommended: false,
+      priority: !!def.priority,
+      reasoning: REASONING_EFFORTS.includes(def.reasoning) ? def.reasoning : '',
+      custom: true
+    };
+  }
+
+  function isValidCustomModelDef(def) {
+    return def && typeof def.apiModel === 'string' && def.apiModel.trim() !== '' &&
+      Number.isFinite(def.inputPer1M) && def.inputPer1M >= 0 &&
+      Number.isFinite(def.outputPer1M) && def.outputPer1M >= 0;
+  }
+
+  /**
    * Initialize API tokens and pricing from storage
    */
   async function initApiTracking(storage) {
+    // Register the user-defined custom model, if configured, so model loading
+    // and the selection dialog can treat it like any other entry
+    try {
+      const stored = await storage.get(STORAGE_KEYS.CUSTOM_MODEL, '');
+      if (stored) {
+        const def = JSON.parse(stored);
+        if (isValidCustomModelDef(def)) {
+          MODEL_OPTIONS[CUSTOM_MODEL_ID] = buildCustomModelOption(def);
+        }
+      }
+    } catch {}
+
     try {
       const stored = await storage.get(STORAGE_KEYS.API_TOKENS, '');
       if (stored) {
@@ -891,8 +936,12 @@
       input: JSON.stringify(safeInputs)
     };
 
-    // GPT-5 models are reasoning models - use minimal reasoning instead of temperature
-    if (apiModel.startsWith('gpt-5')) {
+    // Reasoning effort: custom models with a configured effort use it; otherwise
+    // pick automatically by model family - GPT-5 models are reasoning models
+    // (minimal reasoning instead of temperature), older models get temperature
+    if (modelConfig.custom && modelConfig.reasoning) {
+      bodyObj.reasoning = { effort: modelConfig.reasoning };
+    } else if (apiModel.startsWith('gpt-5')) {
       bodyObj.reasoning = { effort: 'minimal' };
     } else {
       bodyObj.temperature = CFG.temperature;
@@ -1900,12 +1949,22 @@
     .btn-save:hover{background:#1557b0}
     .btn-cancel{background:#e0e0e0;color:#333}
     .btn-cancel:hover{background:#d0d0d0}
+    .custom-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+    .custom-fields label{font:12px/1.4 system-ui,sans-serif;display:flex;flex-direction:column;gap:4px}
+    .custom-fields .custom-full{grid-column:1/-1}
+    .custom-fields .custom-fast{flex-direction:row;align-items:center;gap:8px;grid-column:1/-1}
+    .custom-fields input[type=text],.custom-fields input[type=number],.custom-fields select{
+      padding:8px;border:2px solid #e0e0e0;border-radius:6px;width:100%;
+      font:13px system-ui,sans-serif;color:#1a1a1a;background:#fff;box-sizing:border-box}
+    .custom-fields input:focus,.custom-fields select:focus{outline:none;border-color:#1a73e8}
+    .custom-error{margin-top:8px;font:600 12px system-ui,sans-serif;color:#d93025}
+    .option.selected .custom-error{color:#ffd7d4}
   `;
 
     const wrap = document.createElement('div');
     wrap.className = 'wrap';
 
-    const optionsHtml = Object.keys(MODEL_OPTIONS).map(modelId => {
+    const optionsHtml = Object.keys(MODEL_OPTIONS).filter(id => id !== CUSTOM_MODEL_ID).map(modelId => {
       const model = MODEL_OPTIONS[modelId];
       const isSelected = modelId === currentModel;
       const badge = model.recommended ? '<span class="option-badge">Recommended</span>' : '';
@@ -1921,11 +1980,48 @@
     `;
     }).join('');
 
+    const custom = MODEL_OPTIONS[CUSTOM_MODEL_ID];
+    const customHtml = `
+    <div class="option ${currentModel === CUSTOM_MODEL_ID ? 'selected' : ''}" data-model="${CUSTOM_MODEL_ID}">
+      <div class="option-header">
+        <div class="option-title">Custom model</div>
+      </div>
+      <div class="option-desc">Use any OpenAI model ID with the pricing you enter (see the OpenAI pricing page)</div>
+      <div class="custom-fields">
+        <label class="custom-full">Model ID
+          <input type="text" class="custom-id" placeholder="e.g. gpt-5.6-sol" value="${custom ? escapeHtml(custom.apiModel) : ''}">
+        </label>
+        <label>$ per 1M input tokens
+          <input type="number" class="custom-in" min="0" step="0.01" value="${custom ? custom.inputPer1M : ''}">
+        </label>
+        <label>$ per 1M output tokens
+          <input type="number" class="custom-out" min="0" step="0.01" value="${custom ? custom.outputPer1M : ''}">
+        </label>
+        <label class="custom-full">Reasoning effort
+          <select class="custom-reasoning">
+            <option value="">Automatic (reasoning models: minimal; others: temperature)</option>
+            ${REASONING_EFFORTS.map(effort => `
+              <option value="${effort}" ${custom && custom.reasoning === effort ? 'selected' : ''}>
+                ${effort.charAt(0).toUpperCase() + effort.slice(1)}
+              </option>
+            `).join('')}
+          </select>
+        </label>
+        <label class="custom-fast">
+          <input type="checkbox" class="custom-priority" ${custom && custom.priority ? 'checked' : ''}>
+          Fast mode (faster processing, enter the Fast tier prices)
+        </label>
+      </div>
+      <div class="custom-error"></div>
+    </div>
+  `;
+
     wrap.innerHTML = `
     <div class="modal">
       <h3>AI Model Selection</h3>
       <p class="subtitle">Choose the OpenAI model for headline neutralization. Higher-tier models cost more but may produce better results.</p>
       ${optionsHtml}
+      ${customHtml}
       <div class="actions">
         <button class="btn btn-cancel">Cancel</button>
         <button class="btn btn-save">Save & Reload</button>
@@ -1952,6 +2048,26 @@
     const close = () => host.remove();
 
     btnSave.addEventListener('click', async () => {
+      if (selectedModel === CUSTOM_MODEL_ID) {
+        const apiModel = shadow.querySelector('.custom-id').value.trim();
+        const inputPer1M = parseFloat(shadow.querySelector('.custom-in').value);
+        const outputPer1M = parseFloat(shadow.querySelector('.custom-out').value);
+        const priority = shadow.querySelector('.custom-priority').checked;
+        const reasoningValue = shadow.querySelector('.custom-reasoning').value;
+        const reasoning = REASONING_EFFORTS.includes(reasoningValue) ? reasoningValue : '';
+        const errEl = shadow.querySelector('.custom-error');
+        if (!apiModel) {
+          errEl.textContent = 'Enter a model ID.';
+          return;
+        }
+        if (!Number.isFinite(inputPer1M) || inputPer1M < 0 || !Number.isFinite(outputPer1M) || outputPer1M < 0) {
+          errEl.textContent = 'Enter non-negative input and output prices per 1M tokens.';
+          return;
+        }
+        const def = { apiModel, inputPer1M, outputPer1M, priority, reasoning };
+        await storage.set(STORAGE_KEYS.CUSTOM_MODEL, JSON.stringify(def));
+        MODEL_OPTIONS[CUSTOM_MODEL_ID] = buildCustomModelOption(def);
+      }
       if (!MODEL_OPTIONS[selectedModel]) return;
       await onSelect(selectedModel);
       btnSave.textContent = 'Saved! Reloading...';
@@ -1965,6 +2081,51 @@
 
     wrap.setAttribute('tabindex', '-1');
     wrap.focus();
+  }
+
+  /**
+   * Show a small self-dismissing toast with an optional action link
+   */
+  function showToast(message, { actionLabel, onAction, timeoutMs = 15000 } = {}) {
+    const host = document.createElement('div');
+    host.setAttribute(UI_ATTR, '');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const style = document.createElement('style');
+    style.textContent = `
+    .toast{position:fixed;right:16px;bottom:16px;z-index:2147483647;max-width:340px;
+           background:#1a1a1a;color:#fff;border-radius:10px;padding:14px 32px 14px 16px;
+           box-shadow:0 6px 24px rgba(0,0,0,.35);font:13px/1.5 system-ui,sans-serif}
+    .toast a{color:#8ab4f8;cursor:pointer;text-decoration:underline;font-weight:600;white-space:nowrap}
+    .close{position:absolute;top:8px;right:10px;cursor:pointer;opacity:.6;font:16px/1 system-ui,sans-serif}
+    .close:hover{opacity:1}
+  `;
+    const div = document.createElement('div');
+    div.className = 'toast';
+    div.innerHTML = '<span class="close">&times;</span><span class="msg"></span>';
+    div.querySelector('.msg').textContent = message;
+
+    const dismiss = () => host.remove();
+
+    if (actionLabel && onAction) {
+      const link = document.createElement('a');
+      link.textContent = actionLabel;
+      link.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dismiss();
+        onAction();
+      });
+      div.querySelector('.msg').append(' ');
+      div.querySelector('.msg').appendChild(link);
+    }
+
+    div.querySelector('.close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      dismiss();
+    });
+
+    shadow.append(style, div);
+    document.body.appendChild(host);
+    setTimeout(dismiss, timeoutMs);
   }
 
   /**
@@ -3161,7 +3322,7 @@
   // @namespace    https://fanis.dev/userscripts
   // @author       Fanis Hatzidakis
   // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-  // @version      2.5.0
+  // @version      2.6.0
   // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
   // @match        *://*/*
   // @exclude      about:*
@@ -3225,13 +3386,30 @@
       }
     } catch {}
 
-    // Load model setting
+    // Load model setting; fall back to the default model when the stored
+    // selection no longer exists in MODEL_OPTIONS (MODEL_FALLBACK triggers a
+    // one-time notice after the badge is created)
+    let MODEL_FALLBACK = '';
     try {
       const v = await storage.get(STORAGE_KEYS.MODEL, '');
-      if (v !== '' && MODEL_OPTIONS[v]) {
-        CFG.model = v;
+      if (v !== '') {
+        if (MODEL_OPTIONS[v]) {
+          CFG.model = v;
+        } else {
+          MODEL_FALLBACK = v;
+        }
       }
     } catch {}
+
+    // Keep in-memory pricing in sync with the active model, so cost statistics
+    // pick up corrected rates after a pricing or lineup change instead of using
+    // a stale stored snapshot
+    {
+      const activeModel = MODEL_OPTIONS[CFG.model];
+      PRICING.model = activeModel.name;
+      PRICING.inputPer1M = activeModel.inputPer1M;
+      PRICING.outputPer1M = activeModel.outputPer1M;
+    }
 
     // Settings functions
     async function setDebug(on) { CFG.DEBUG = !!on; await storage.set(STORAGE_KEYS.DEBUG, String(CFG.DEBUG)); location.reload(); }
@@ -3659,6 +3837,19 @@
     ensureBadge(badgeOpts());
     attachTargets(document);
     ensureObserver();
+
+    // Notify users whose saved model was removed from MODEL_OPTIONS. Persisting
+    // the fallback via setModel makes this a one-time notice.
+    if (MODEL_FALLBACK) {
+      await setModel(CFG.model);
+      showToast(
+        `Your selected AI model (${MODEL_FALLBACK}) is no longer offered. Switched to ${MODEL_OPTIONS[CFG.model].name}.`,
+        {
+          actionLabel: 'Model settings',
+          onAction: () => openModelSelectionDialog(storage, CFG.model, setModel)
+        }
+      );
+    }
 
     // Coalesce mutation bursts: collect added elements and process them in one
     // debounced pass instead of running the full selector pipeline per node.
