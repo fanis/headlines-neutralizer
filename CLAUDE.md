@@ -16,6 +16,7 @@ npm run test:all   # Run all tests
 - Only run build and tests when actual code is edited (src/*, tests/*), not for documentation-only changes
 - Git push to GitHub requires manual execution for authentication - remind user to push
 - Never attribute Claude in commits or PRs: no Co-Authored-By trailers, session links, or "Generated with" lines
+- **Never commit a rebuilt `dist/headlines-neutralizer.js` in development branches/PRs.** Greasy Fork syncs the published script from that file on `main` via a push webhook, so it must only change in release commits (the `Cut Release` workflow builds and commits it). Run `npm run build` locally to verify changes, but leave `dist/` out of commits.
 
 ## Architecture Notes
 
