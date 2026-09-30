@@ -106,57 +106,6 @@ describe('Badge UI Redesign', () => {
     });
   });
 
-  describe('Strength segmented control', () => {
-    it('should render all 5 strength levels', () => {
-      const levels = ['Minimal', 'Light', 'Moderate', 'Strong', 'Maximum'];
-      const seg = document.createElement('div');
-      seg.className = 'neutralizer-popover-seg';
-      levels.forEach(level => {
-        const btn = document.createElement('button');
-        btn.className = 'neutralizer-popover-option';
-        btn.dataset.strength = level;
-        btn.textContent = level;
-        seg.appendChild(btn);
-      });
-      document.body.appendChild(seg);
-
-      const options = seg.querySelectorAll('[data-strength]');
-      expect(options.length).toBe(5);
-      expect(options[0].dataset.strength).toBe('Minimal');
-      expect(options[4].dataset.strength).toBe('Maximum');
-    });
-
-    it('should mark current level as active', () => {
-      const btn = document.createElement('button');
-      btn.className = 'neutralizer-popover-option neutralizer-popover-active';
-      btn.dataset.strength = 'Moderate';
-
-      expect(btn.classList.contains('neutralizer-popover-active')).toBe(true);
-    });
-
-    it('should switch active state on click', () => {
-      const levels = ['Light', 'Moderate', 'Strong'];
-      const seg = document.createElement('div');
-      levels.forEach(level => {
-        const btn = document.createElement('button');
-        btn.className = 'neutralizer-popover-option';
-        if (level === 'Moderate') btn.classList.add('neutralizer-popover-active');
-        btn.dataset.strength = level;
-        seg.appendChild(btn);
-      });
-      document.body.appendChild(seg);
-
-      // Simulate clicking "Strong"
-      const btns = seg.querySelectorAll('[data-strength]');
-      btns.forEach(b => b.classList.remove('neutralizer-popover-active'));
-      btns[2].classList.add('neutralizer-popover-active');
-
-      expect(btns[0].classList.contains('neutralizer-popover-active')).toBe(false);
-      expect(btns[1].classList.contains('neutralizer-popover-active')).toBe(false);
-      expect(btns[2].classList.contains('neutralizer-popover-active')).toBe(true);
-    });
-  });
-
   describe('Auto-detect toggle', () => {
     it('should render ON/OFF options', () => {
       const seg = document.createElement('div');

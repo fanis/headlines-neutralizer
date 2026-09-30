@@ -62,8 +62,7 @@
 
 ##  Features:
   - Automatic headline detection using smart heuristics
-  - **AI model selection** - Choose from 5 OpenAI models with different price/quality tradeoffs, or define a custom model ID with your own pricing
-  - Adjustable neutralization strength (5 levels from Minimal to Maximum)
+  - **AI model selection** - Choose from 3 OpenAI GPT-6 presets with different price/quality tradeoffs, or define a custom model ID with your own pricing
   - **Element Inspection Mode** - Diagnostic tool to troubleshoot why elements are/aren't being processed
   - Global + per-domain CSS selector configuration
   - Per-domain additions to selectors and exclusions
@@ -86,7 +85,7 @@
 2. OpenAI API key
 - Sign up at https://platform.openai.com/
 - Generate an API key from your account settings
-- The script uses GPT-4.1 Nano Fast by default (fast processing for headlines)
+- The script uses GPT-6 Luna Fast by default (fast processing for headlines)
 
   ---
 ## Installation
@@ -234,18 +233,16 @@ For detailed documentation:
 ###  Configuration
 
   - **Set / Validate OpenAI API key** - Add or test your API key
-  - **AI model** - Select from 5 OpenAI models with different price/quality tradeoffs, or a custom model
+  - **AI model** - Select from 3 OpenAI models with different price/quality tradeoffs, or a custom model
 
   ![AI Model Selection dialog](screenshots/model-selection.jpg)
-    - GPT-5 Nano - $0.05/$0.40 per 1M tokens (cheapest)
-    - GPT-5.6 Luna - $0.20/$1.20 per 1M tokens (newest generation, low cost)
-    - GPT-4.1 Nano Fast (recommended) - $0.20/$0.80 per 1M tokens (fast)
-    - GPT-5 Mini Fast - $0.45/$3.60 per 1M tokens (better + faster)
-    - GPT-5.6 Terra Fast - $4.00/$24.00 per 1M tokens (newest flagship tier + faster)
-    - Custom model - enter any OpenAI model ID with your own pricing, reasoning effort, and Fast mode flag
-    - Note: GPT-5 models are reasoning models and use minimal reasoning instead of temperature
+    - GPT-6 Luna Fast (recommended) - $0.20/$1.00 per 1M tokens (fast, low cost)
+    - GPT-6 Luna - $0.10/$0.50 per 1M tokens (cheapest, about 2 seconds slower per batch)
+    - GPT-6.1 Sol Fast - $4.00/$20.00 per 1M tokens (highest fidelity: keeps quotes and shortens more)
+    - Custom model - enter any OpenAI model ID with your own pricing, reasoning effort (none/minimal/low/medium/high/extra high/max, or the model default), and Fast mode flag. Supported effort values differ per model: GPT-5.6 and GPT-6 models reject `minimal`, the original GPT-5 models reject `none`.
+    - Each model sends a fixed reasoning effort. With effort `none` the script also sends temperature 0.2 for consistent rewrites; the API rejects temperature at any other effort.
     - Pricing is automatically updated when you change models
-    - If a previously selected model is removed in a later version, the script falls back to the default and shows a one-time notice
+    - If a previously selected model is removed in a later version, the script falls back to the default and shows a one-time notice with a link to the model settings. If OpenAI shuts down the model behind your custom model, a one-time notice asks you to choose another model.
 
   **Global Settings** (apply to all domains):
   - **Edit GLOBAL target selectors** - Base CSS selectors for all websites
@@ -274,9 +271,6 @@ For detailed documentation:
 
 ###  Toggles
 
-  - **Neutralization strength** - Adjust how aggressively headlines are rewritten (5 levels from Minimal to Maximum)
-
-  ![Neutralization Strength dialog](screenshots/neutralization-strength.jpg)
   - Toggle auto-detect (ON/OFF) - Enable/disable automatic headline detection
     - Turn OFF to rely only on manual CSS selectors
   - Toggle DEBUG logs (ON/OFF) - Show detailed console logs
@@ -471,7 +465,7 @@ For detailed documentation:
 
 ###  Change AI Model
 
-  Use the userscript menu: **AI model (current model name)** to select from 5 built-in models or define a custom one. The menu shows current model and opens a selection dialog with pricing information. Changing models clears the cache and updates pricing automatically.
+  Use the userscript menu: **AI model (current model name)** to select from 3 built-in models or define a custom one. The menu shows current model and opens a selection dialog with pricing information. Changing models clears the cache and updates pricing automatically.
 
 ###  Adjust Batch Size
 

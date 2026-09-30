@@ -2,7 +2,7 @@
  * Settings dialogs and management
  */
 
-import { UI_ATTR, TEMPERATURE_LEVELS, TEMPERATURE_ORDER, STORAGE_KEYS, MODEL_OPTIONS, CUSTOM_MODEL_ID, REASONING_EFFORTS } from './config.js';
+import { UI_ATTR, STORAGE_KEYS, MODEL_OPTIONS, CUSTOM_MODEL_ID, REASONING_EFFORTS } from './config.js';
 import { parseLines, escapeHtml } from './utils.js';
 import { validateApiKey, buildCustomModelOption } from './api.js';
 
@@ -215,7 +215,7 @@ export function openWelcomeDialog(storage, openEditor, openInfo) {
         </ol>
       </div>
       <p style="font-size:13px;color:#666;margin-top:16px"><strong>Domain control:</strong> By default, all websites are disabled. After setup, you can enable websites one by one via the menu, or toggle to "All domains with Denylist" mode to enable everywhere.</p>
-      <p style="font-size:13px;color:#666">The script uses GPT-4.1 Nano Priority by default (fast processing for headlines). You can change the model anytime via the menu. Your key is stored locally and never shared.</p>
+      <p style="font-size:13px;color:#666">The script uses GPT-6 Luna Fast by default (fast processing for headlines). You can change the model anytime via the menu. Your key is stored locally and never shared.</p>
       <div class="actions">
         <button class="btn secondary cancel">Maybe Later</button>
         <button class="btn primary continue">Set Up API Key</button>
@@ -415,69 +415,16 @@ export function openSelectorEditor({ HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, E
   wrap.focus();
 }
 
-/**
- * Show temperature selection dialog
- */
-export function openTemperatureDialog(storage, TEMPERATURE_LEVEL, setTemperature) {
-  const host = document.createElement('div');
-  host.setAttribute(UI_ATTR, '');
-  const shadow = host.attachShadow({ mode: 'open' });
-  const style = document.createElement('style');
-  style.textContent = `
-    .wrap{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.45);
-          display:flex;align-items:center;justify-content:center}
-    .modal{background:#fff;max-width:520px;width:92%;border-radius:10px;
-           box-shadow:0 10px 40px rgba(0,0,0,.35);padding:20px;box-sizing:border-box}
-    .modal h3{margin:0 0 16px;font:600 16px/1.2 system-ui,sans-serif}
-    .options{display:flex;flex-direction:column;gap:10px}
-    .option-btn{padding:14px 16px;border-radius:8px;border:2px solid #d0d0d0;background:#fff;
-                cursor:pointer;text-align:left;font:14px/1.4 system-ui,sans-serif;
-                transition:all 0.15s ease;display:flex;justify-content:space-between;align-items:center}
-    .option-btn:hover{background:#f8f9fa;border-color:#1a73e8}
-    .option-btn.selected{background:#e8f0fe;border-color:#1a73e8;font-weight:600}
-    .option-btn .label{flex:1}
-    .option-btn .value{color:#666;font-size:12px;margin-left:8px}
-    .option-btn .checkmark{color:#1a73e8;margin-left:8px;font-weight:bold}
-    .hint{margin:16px 0 0;color:#666;font:12px/1.4 system-ui,sans-serif;text-align:center}
-  `;
-  const wrap = document.createElement('div');
-  wrap.className = 'wrap';
-
-  const optionsHTML = TEMPERATURE_ORDER.map(level => {
-    const isSelected = level === TEMPERATURE_LEVEL;
-    const value = TEMPERATURE_LEVELS[level];
-    return `<button class="option-btn ${isSelected ? 'selected' : ''}" data-level="${level}">
-      <span class="label">${level}</span>
-      <span class="value">${value}</span>
-      ${isSelected ? '<span class="checkmark">✓</span>' : ''}
-    </button>`;
-  }).join('');
-
-  wrap.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true" aria-label="Neutralization Strength">
-      <h3>Neutralization Strength</h3>
-      <div class="options">
-        ${optionsHTML}
-      </div>
-      <p class="hint">Select how aggressively to neutralize headlines. Lower values preserve more of the original meaning.</p>
-    </div>`;
-
-  shadow.append(style, wrap);
-  document.body.appendChild(host);
-  const close = () => host.remove();
-
-  shadow.querySelectorAll('.option-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const level = btn.getAttribute('data-level');
-      await setTemperature(level);
-    });
-  });
-
-  wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
-  shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
-  wrap.setAttribute('tabindex', '-1');
-  wrap.focus();
-}
+// Display labels for the custom model's reasoning effort options
+const REASONING_LABELS = {
+  none: 'None (also sends temperature 0.2)',
+  minimal: 'Minimal (original GPT-5 models only)',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra high',
+  max: 'Max'
+};
 
 /**
  * Show model selection dialog
@@ -563,10 +510,10 @@ export function openModelSelectionDialog(storage, currentModel, onSelect) {
         </label>
         <label class="custom-full">Reasoning effort
           <select class="custom-reasoning">
-            <option value="">Automatic (reasoning models: minimal; others: temperature)</option>
+            <option value="">Model default (no parameter sent)</option>
             ${REASONING_EFFORTS.map(effort => `
               <option value="${effort}" ${custom && custom.reasoning === effort ? 'selected' : ''}>
-                ${effort.charAt(0).toUpperCase() + effort.slice(1)}
+                ${REASONING_LABELS[effort]}
               </option>
             `).join('')}
           </select>
@@ -689,7 +636,8 @@ export function showToast(message, { actionLabel, onAction, timeoutMs = 15000 } 
 
   shadow.append(style, div);
   document.body.appendChild(host);
-  setTimeout(dismiss, timeoutMs);
+  // timeoutMs 0 keeps the toast until the user closes it
+  if (timeoutMs > 0) setTimeout(dismiss, timeoutMs);
 }
 
 /**

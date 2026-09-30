@@ -784,10 +784,10 @@ describe('API Integration', () => {
       expect(capturedRequest.url).toBe('https://api.openai.com/v1/responses');
 
       const body = JSON.parse(capturedRequest.data);
-      expect(body.model).toBe('gpt-4.1-nano');
+      expect(body.model).toBe('gpt-6-luna'); // Default: GPT-6 Luna Fast
       expect(body.service_tier).toBe('priority');
-      expect(body.temperature).toBe(0.2); // Non-GPT-5 models use temperature
-      expect(body.reasoning).toBeUndefined(); // Only GPT-5 models use reasoning
+      expect(body.reasoning).toEqual({ effort: 'none' });
+      expect(body.temperature).toBe(0.2); // Temperature is accepted with effort none
       expect(body.max_output_tokens).toBe(600); // Math.max(600, 1 * 120) for single headline
       expect(body.instructions).toContain('neutrally');
       expect(body.input).toBe('["Test headline"]');
@@ -804,12 +804,13 @@ describe('API Integration', () => {
       vi.useRealTimers();
     });
 
-    it('should use apiModel from MODEL_OPTIONS for selected model', async () => {
+    // Send one request with the given model selected and return the parsed body
+    async function requestBodyFor(modelId) {
       const { CFG } = await import('../../src/modules/config.js');
-      CFG.model = 'gpt-5-mini-priority';
+      const originalModel = CFG.model;
+      CFG.model = modelId;
 
       let capturedRequest = null;
-
       mockGM_xmlhttpRequest.mockImplementation((opts) => {
         capturedRequest = opts;
         setTimeout(() => {
@@ -823,135 +824,64 @@ describe('API Integration', () => {
         }, 0);
       });
 
-      const resultPromise = rewriteBatch(mockStorage, ['Test headline']);
-      await vi.runAllTimersAsync();
-      await resultPromise;
+      try {
+        const resultPromise = rewriteBatch(mockStorage, ['Test headline']);
+        await vi.runAllTimersAsync();
+        await resultPromise;
+        return JSON.parse(capturedRequest.data);
+      } finally {
+        CFG.model = originalModel;
+      }
+    }
 
-      const body = JSON.parse(capturedRequest.data);
-      expect(body.model).toBe('gpt-5-mini');
+    it('should use apiModel, Fast tier and effort low without temperature for GPT-6.1 Sol Fast', async () => {
+      const body = await requestBodyFor('gpt-6.1-sol-priority');
+      expect(body.model).toBe('gpt-6.1-sol');
       expect(body.service_tier).toBe('priority');
-
-      // Reset to default
-      CFG.model = 'gpt-5-nano';
+      expect(body.reasoning).toEqual({ effort: 'low' });
+      expect(body.temperature).toBeUndefined(); // The API rejects temperature at effort low
     });
 
     it('should not include service_tier for non-priority models', async () => {
-      const { CFG } = await import('../../src/modules/config.js');
-      CFG.model = 'gpt-5-nano';
-
-      let capturedRequest = null;
-
-      mockGM_xmlhttpRequest.mockImplementation((opts) => {
-        capturedRequest = opts;
-        setTimeout(() => {
-          opts.onload({
-            status: 200,
-            responseText: JSON.stringify({
-              output_text: '["Result"]',
-              usage: { input_tokens: 50, output_tokens: 25 }
-            })
-          });
-        }, 0);
-      });
-
-      const resultPromise = rewriteBatch(mockStorage, ['Test headline']);
-      await vi.runAllTimersAsync();
-      await resultPromise;
-
-      const body = JSON.parse(capturedRequest.data);
-      expect(body.model).toBe('gpt-5-nano');
+      const body = await requestBodyFor('gpt-6-luna');
+      expect(body.model).toBe('gpt-6-luna');
       expect(body.service_tier).toBeUndefined();
-    });
-
-    it('should use reasoning for GPT-5 models instead of temperature', async () => {
-      const { CFG } = await import('../../src/modules/config.js');
-      CFG.model = 'gpt-5-nano';
-
-      let capturedRequest = null;
-
-      mockGM_xmlhttpRequest.mockImplementation((opts) => {
-        capturedRequest = opts;
-        setTimeout(() => {
-          opts.onload({
-            status: 200,
-            responseText: JSON.stringify({
-              output_text: '["Result"]',
-              usage: { input_tokens: 50, output_tokens: 25 }
-            })
-          });
-        }, 0);
-      });
-
-      const resultPromise = rewriteBatch(mockStorage, ['Test headline']);
-      await vi.runAllTimersAsync();
-      await resultPromise;
-
-      const body = JSON.parse(capturedRequest.data);
-      expect(body.reasoning).toEqual({ effort: 'minimal' });
-      expect(body.temperature).toBeUndefined();
-
-      // Reset
-      CFG.model = 'gpt-4.1-nano-priority';
-    });
-
-    it('should use temperature for non-GPT-5 models', async () => {
-      const { CFG } = await import('../../src/modules/config.js');
-      CFG.model = 'gpt-4.1-nano-priority';
-
-      let capturedRequest = null;
-
-      mockGM_xmlhttpRequest.mockImplementation((opts) => {
-        capturedRequest = opts;
-        setTimeout(() => {
-          opts.onload({
-            status: 200,
-            responseText: JSON.stringify({
-              output_text: '["Result"]',
-              usage: { input_tokens: 50, output_tokens: 25 }
-            })
-          });
-        }, 0);
-      });
-
-      const resultPromise = rewriteBatch(mockStorage, ['Test headline']);
-      await vi.runAllTimersAsync();
-      await resultPromise;
-
-      const body = JSON.parse(capturedRequest.data);
+      expect(body.reasoning).toEqual({ effort: 'none' });
       expect(body.temperature).toBe(0.2);
-      expect(body.reasoning).toBeUndefined();
     });
 
-    it('should fallback to gpt-4.1-nano-priority for unknown model', async () => {
-      const { CFG } = await import('../../src/modules/config.js');
-      const originalModel = CFG.model;
-      CFG.model = 'unknown-model';
+    it('should send neither reasoning nor temperature for a custom model left on the model default', async () => {
+      const { MODEL_OPTIONS } = await import('../../src/modules/config.js');
+      const { buildCustomModelOption } = await import('../../src/modules/api.js');
+      MODEL_OPTIONS.custom = buildCustomModelOption({ apiModel: 'gpt-6-sol', inputPer1M: 2, outputPer1M: 10, priority: false, reasoning: '' });
+      try {
+        const body = await requestBodyFor('custom');
+        expect(body.model).toBe('gpt-6-sol');
+        expect(body.reasoning).toBeUndefined();
+        expect(body.temperature).toBeUndefined();
+      } finally {
+        delete MODEL_OPTIONS.custom;
+      }
+    });
 
-      let capturedRequest = null;
+    it('should send the configured effort for a custom model and temperature only with none', async () => {
+      const { MODEL_OPTIONS } = await import('../../src/modules/config.js');
+      const { buildCustomModelOption } = await import('../../src/modules/api.js');
+      MODEL_OPTIONS.custom = buildCustomModelOption({ apiModel: 'gpt-5-nano', inputPer1M: 0.05, outputPer1M: 0.4, priority: false, reasoning: 'minimal' });
+      try {
+        const body = await requestBodyFor('custom');
+        expect(body.reasoning).toEqual({ effort: 'minimal' });
+        expect(body.temperature).toBeUndefined();
+      } finally {
+        delete MODEL_OPTIONS.custom;
+      }
+    });
 
-      mockGM_xmlhttpRequest.mockImplementation((opts) => {
-        capturedRequest = opts;
-        setTimeout(() => {
-          opts.onload({
-            status: 200,
-            responseText: JSON.stringify({
-              output_text: '["Result"]',
-              usage: { input_tokens: 50, output_tokens: 25 }
-            })
-          });
-        }, 0);
-      });
-
-      const resultPromise = rewriteBatch(mockStorage, ['Test headline']);
-      await vi.runAllTimersAsync();
-      await resultPromise;
-
-      const body = JSON.parse(capturedRequest.data);
-      expect(body.model).toBe('gpt-4.1-nano');
+    it('should fall back to the default model (GPT-6 Luna Fast) for an unknown model', async () => {
+      const body = await requestBodyFor('unknown-model');
+      expect(body.model).toBe('gpt-6-luna');
       expect(body.service_tier).toBe('priority');
-
-      // Reset
-      CFG.model = originalModel;
+      expect(body.reasoning).toEqual({ effort: 'none' });
     });
   });
 });

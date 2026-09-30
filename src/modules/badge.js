@@ -2,8 +2,7 @@
  * Badge UI creation and management
  */
 
-import { UI_ATTR, STORAGE_KEYS, TEMPERATURE_ORDER } from './config.js';
-import { escapeHtml } from './utils.js';
+import { UI_ATTR, STORAGE_KEYS } from './config.js';
 
 let badge = null;
 let badgeState = 'calmed'; // 'calmed' or 'originals'
@@ -25,8 +24,7 @@ export function ensureBadge(opts) {
     DOMAIN_DISABLED, OPTED_OUT, SHOW_BADGE, BADGE_COLLAPSED, BADGE_POS, storage,
     onInspect, restoreOriginals, reapplyFromCache,
     onEditSelectors, onShowIncluded, onStats, onFlushCache,
-    onStrengthChange, onAutoDetectToggle,
-    strengthLevel, autoDetectOn
+    onAutoDetectToggle, autoDetectOn
   } = opts;
 
   if ((DOMAIN_DISABLED || OPTED_OUT) || !SHOW_BADGE) return;
@@ -43,11 +41,6 @@ export function ensureBadge(opts) {
 
   badge.style.top = `${BADGE_POS.y}px`;
   badge.style.right = '0px';
-
-  // Build strength segmented control (1=Minimal .. 5=Maximum)
-  const strengthBtns = TEMPERATURE_ORDER.map((level, i) =>
-    `<button class="neutralizer-popover-option${level === strengthLevel ? ' neutralizer-popover-active' : ''}" data-strength="${escapeHtml(level)}" title="${escapeHtml(level)}">${i + 1}</button>`
-  ).join('');
 
   badge.innerHTML = `
     <div class="badge-handle" title="${BADGE_COLLAPSED.value ? 'Open' : 'Close'}">${BADGE_COLLAPSED.value ? '\u25C0' : '\u25B6'}</div>
@@ -66,10 +59,6 @@ export function ensureBadge(opts) {
       <button class="neutralizer-popover-item" data-action="inspect">Inspect Elements</button>
       <button class="neutralizer-popover-item" data-action="show-included">Show Included</button>
       <hr class="neutralizer-popover-sep">
-      <div class="neutralizer-popover-group">
-        <span class="neutralizer-popover-label">Strength</span>
-        <div class="neutralizer-popover-seg">${strengthBtns}</div>
-      </div>
       <div class="neutralizer-popover-group">
         <span class="neutralizer-popover-label">Auto-detect</span>
         <div class="neutralizer-popover-seg">
@@ -125,15 +114,6 @@ export function ensureBadge(opts) {
       else if (action === 'show-included') onShowIncluded?.();
       else if (action === 'stats') onStats?.();
       else if (action === 'flush-cache') onFlushCache?.();
-    });
-  });
-
-  // Strength segmented control
-  popover.querySelectorAll('[data-strength]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      popover.querySelectorAll('[data-strength]').forEach(b => b.classList.remove('neutralizer-popover-active'));
-      btn.classList.add('neutralizer-popover-active');
-      onStrengthChange?.(btn.dataset.strength);
     });
   });
 

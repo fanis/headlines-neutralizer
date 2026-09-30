@@ -2,7 +2,7 @@
  * OpenAI API integration and token tracking
  */
 
-import { CFG, STORAGE_KEYS, DEFAULT_PRICING, MODEL_OPTIONS, CUSTOM_MODEL_ID, REASONING_EFFORTS } from './config.js';
+import { CFG, STORAGE_KEYS, DEFAULT_PRICING, DEFAULT_MODEL, MODEL_OPTIONS, CUSTOM_MODEL_ID, REASONING_EFFORTS, REMOVED_MODEL_NAMES, LEGACY_DEFAULT_MODEL, RETIRED_API_MODELS } from './config.js';
 import { log } from './utils.js';
 
 /**
@@ -16,6 +16,21 @@ export let API_TOKENS = {
  * API Pricing configuration (user-editable)
  */
 export let PRICING = { ...DEFAULT_PRICING };
+
+/**
+ * One-time model notice for the UI, set by initApiTracking:
+ *   { type: 'switched', fromName }  saved model no longer offered; CFG.model
+ *                                   holds the replacement
+ *   { type: 'custom-retired', apiModel, retiredOn }
+ *                                   active custom model shut down by OpenAI
+ */
+export let MODEL_NOTICE = null;
+
+/**
+ * True when the active model must be saved: nothing was saved yet, or the saved
+ * model was replaced. Saving it makes the 'switched' notice one-time.
+ */
+export let MODEL_UNSAVED = false;
 
 /**
  * Build a MODEL_OPTIONS entry from a user-defined model definition
@@ -41,9 +56,10 @@ function isValidCustomModelDef(def) {
 }
 
 /**
- * Initialize API tokens and pricing from storage
+ * Initialize API tokens, pricing and the active model from storage
+ * @param {Date} today - current date (injectable for tests)
  */
-export async function initApiTracking(storage) {
+export async function initApiTracking(storage, today = new Date()) {
   // Register the user-defined custom model, if configured, so model loading
   // and the selection dialog can treat it like any other entry
   try {
@@ -54,6 +70,38 @@ export async function initApiTracking(storage) {
         MODEL_OPTIONS[CUSTOM_MODEL_ID] = buildCustomModelOption(def);
       }
     }
+  } catch {}
+
+  // Apply saved model preference. An existing user (API key set) with no saved
+  // model was on the legacy default. When the previous model is no longer
+  // offered, fall back to the default model and flag a 'switched' notice.
+  try {
+    const [modelRaw, keyRaw, retiredNoticeRaw] = await Promise.all([
+      storage.get(STORAGE_KEYS.MODEL, ''),
+      storage.get(STORAGE_KEYS.OPENAI_KEY, ''),
+      storage.get(STORAGE_KEYS.RETIRED_NOTICE, '')
+    ]);
+    let modelId = DEFAULT_MODEL;
+    const previous = modelRaw || (keyRaw ? LEGACY_DEFAULT_MODEL : '');
+    if (previous) {
+      if (MODEL_OPTIONS[previous]) {
+        modelId = previous;
+      } else {
+        MODEL_NOTICE = { type: 'switched', fromName: REMOVED_MODEL_NAMES[previous] || previous };
+      }
+    }
+    MODEL_UNSAVED = modelRaw !== modelId;
+
+    // Flag an active custom model whose API model OpenAI has shut down, once per
+    // retired model ID (the user must pick a replacement themselves)
+    if (modelId === CUSTOM_MODEL_ID) {
+      const apiModel = MODEL_OPTIONS[CUSTOM_MODEL_ID].apiModel;
+      const retiredOn = RETIRED_API_MODELS[apiModel];
+      if (retiredOn && today.toISOString().slice(0, 10) >= retiredOn && retiredNoticeRaw !== apiModel) {
+        MODEL_NOTICE = { type: 'custom-retired', apiModel, retiredOn };
+      }
+    }
+    CFG.model = modelId;
   } catch {}
 
   try {
@@ -291,8 +339,8 @@ export async function rewriteBatch(storage, texts) {
     ' If the headline contains a direct quote inside quotation marks (English "…", Greek «…»), keep that quoted text verbatim.' +
     ' Aim ≤ 110 characters when possible. Return ONLY a JSON array of strings, same order as input.';
 
-  // Get model config (apiModel and priority flag)
-  const modelConfig = MODEL_OPTIONS[CFG.model] || MODEL_OPTIONS['gpt-4.1-nano-priority'];
+  // Get model config (apiModel, priority flag, reasoning effort)
+  const modelConfig = MODEL_OPTIONS[CFG.model] || MODEL_OPTIONS[DEFAULT_MODEL];
   const apiModel = modelConfig.apiModel;
 
   // Scale output tokens to batch size: ~120 tokens per headline, minimum 600
@@ -305,15 +353,15 @@ export async function rewriteBatch(storage, texts) {
     input: JSON.stringify(safeInputs)
   };
 
-  // Reasoning effort: custom models with a configured effort use it; otherwise
-  // pick automatically by model family - GPT-5 models are reasoning models
-  // (minimal reasoning instead of temperature), older models get temperature
-  if (modelConfig.custom && modelConfig.reasoning) {
+  // Reasoning effort comes from the model entry (valid values differ per model
+  // family; empty sends no reasoning parameter). Temperature is only accepted
+  // with effort 'none', where a fixed low value keeps rewrites consistent
+  // (the API default is 1.0).
+  if (modelConfig.reasoning) {
     bodyObj.reasoning = { effort: modelConfig.reasoning };
-  } else if (apiModel.startsWith('gpt-5')) {
-    bodyObj.reasoning = { effort: 'minimal' };
-  } else {
-    bodyObj.temperature = CFG.temperature;
+    if (modelConfig.reasoning === 'none') {
+      bodyObj.temperature = CFG.temperature;
+    }
   }
 
   // Add service_tier for priority models

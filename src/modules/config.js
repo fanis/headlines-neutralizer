@@ -2,9 +2,12 @@
  * Configuration constants and settings
  */
 
+// Default model id (a key of MODEL_OPTIONS)
+export const DEFAULT_MODEL = 'gpt-6-luna-priority';
+
 export const CFG = {
-  model: 'gpt-4.1-nano-priority',  // Default model (can be changed via settings)
-  temperature: 0.2,
+  model: DEFAULT_MODEL,  // Active model (can be changed via settings)
+  temperature: 0.2,      // Sent only with reasoning effort 'none' (other efforts reject it)
   maxBatch: 24,
   DEBUG: false,
 
@@ -40,56 +43,46 @@ export const CFG = {
 export const UI_ATTR = 'data-neutralizer-ui';
 
 // Available models with pricing
-// Pricing source: https://developers.openai.com/api/docs/pricing (as of 2026-07-31)
-// Note: OpenAI renamed "priority processing" to "Fast mode" on 2026-07-30 and it
-// is billed at roughly 2x the standard tier (the old "no additional cost" note no
-// longer holds). service_tier "priority" remains a valid API alias. Storage keys
-// keep the -priority suffix so existing user selections are preserved.
+// Pricing source: https://developers.openai.com/api/docs/pricing (as of 2026-09-30)
+// Note: OpenAI renamed "priority processing" to "Fast mode" on 2026-07-30; it is
+// billed at 2x the standard tier. service_tier "priority" remains a valid API
+// alias. Fast model IDs keep the -priority suffix for consistency with stored
+// selections.
+// reasoning: the reasoning.effort sent with every request. Valid values differ
+// per model family (GPT-5.6/GPT-6 reject 'minimal', GPT-6.1 Sol also rejects
+// 'none'), so each entry names its own; '' sends no reasoning parameter.
+// CFG.temperature is sent only with effort 'none': the API rejects temperature
+// at any other effort.
 export const MODEL_OPTIONS = {
-  'gpt-5-nano': {
-    name: 'GPT-5 Nano',
-    apiModel: 'gpt-5-nano',
-    description: 'Ultra-affordable - Best value',
-    inputPer1M: 0.05,
-    outputPer1M: 0.40,
-    recommended: false,
-    priority: false
-  },
-  'gpt-5.6-luna': {
-    name: 'GPT-5.6 Luna',
-    apiModel: 'gpt-5.6-luna',
-    description: 'Newest generation at low cost',
+  'gpt-6-luna-priority': {
+    name: 'GPT-6 Luna Fast',
+    apiModel: 'gpt-6-luna',
+    description: 'Fast processing, low cost - Best for headlines',
     inputPer1M: 0.20,
-    outputPer1M: 1.20,
-    recommended: false,
-    priority: false
-  },
-  'gpt-4.1-nano-priority': {
-    name: 'GPT-4.1 Nano Fast',
-    apiModel: 'gpt-4.1-nano',
-    description: 'Fast processing, affordable - Best for headlines',
-    inputPer1M: 0.20,
-    outputPer1M: 0.80,
+    outputPer1M: 1.00,
     recommended: true,
-    priority: true
+    priority: true,
+    reasoning: 'none'
   },
-  'gpt-5-mini-priority': {
-    name: 'GPT-5 Mini Fast',
-    apiModel: 'gpt-5-mini',
-    description: 'Better quality + faster processing',
-    inputPer1M: 0.45,
-    outputPer1M: 3.60,
+  'gpt-6-luna': {
+    name: 'GPT-6 Luna',
+    apiModel: 'gpt-6-luna',
+    description: 'Half the cost of Luna Fast, about 2 seconds slower per batch',
+    inputPer1M: 0.10,
+    outputPer1M: 0.50,
     recommended: false,
-    priority: true
+    priority: false,
+    reasoning: 'none'
   },
-  'gpt-5.6-terra-priority': {
-    name: 'GPT-5.6 Terra Fast',
-    apiModel: 'gpt-5.6-terra',
-    description: 'Newest flagship tier + faster processing (most expensive)',
+  'gpt-6.1-sol-priority': {
+    name: 'GPT-6.1 Sol Fast',
+    apiModel: 'gpt-6.1-sol',
+    description: 'Highest fidelity - Keeps quotes and shortens more (about 20x the cost of Luna Fast)',
     inputPer1M: 4.00,
-    outputPer1M: 24.00,
+    outputPer1M: 20.00,
     recommended: false,
-    priority: true
+    priority: true,
+    reasoning: 'low'
   }
 };
 
@@ -97,18 +90,40 @@ export const MODEL_OPTIONS = {
 export const CUSTOM_MODEL_ID = 'custom';
 
 // Valid reasoning effort values for the custom model definition
-export const REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high'];
+// ('minimal' is for original GPT-5 models; newer models use 'none' instead)
+export const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
-// Temperature levels mapping
-export const TEMPERATURE_LEVELS = {
-  'Minimal': 0.0,
-  'Light': 0.1,
-  'Moderate': 0.2,
-  'Strong': 0.35,
-  'Maximum': 0.5
+// Display names for model IDs that earlier versions offered, so the model
+// change notice can name the user's previous model
+export const REMOVED_MODEL_NAMES = {
+  'gpt-4o-mini': 'GPT-4o Mini',
+  'gpt-5-nano': 'GPT-5 Nano',
+  'gpt-5-mini': 'GPT-5 Mini',
+  'gpt-5.2-priority': 'GPT-5.2 Priority',
+  'gpt-5.6-luna': 'GPT-5.6 Luna',
+  'gpt-4.1-nano-priority': 'GPT-4.1 Nano Fast',
+  'gpt-5-mini-priority': 'GPT-5 Mini Fast',
+  'gpt-5.6-terra-priority': 'GPT-5.6 Terra Fast',
+  [CUSTOM_MODEL_ID]: 'your custom model'
 };
 
-export const TEMPERATURE_ORDER = ['Minimal', 'Light', 'Moderate', 'Strong', 'Maximum'];
+// Default model of versions up to 2.6.x. Those versions did not save the
+// default selection, so an existing user with no saved model was using this one.
+export const LEGACY_DEFAULT_MODEL = 'gpt-4.1-nano-priority';
+
+// OpenAI API model IDs with announced shutdown dates
+// (https://developers.openai.com/api/docs/deprecations). An active custom model
+// using one of them gets a one-time notice once the date has passed.
+// gpt-5-nano and gpt-5-mini: OpenAI announced the shutdown of their 2025-08-07
+// snapshots, which are the only snapshots behind those aliases.
+export const RETIRED_API_MODELS = {
+  'gpt-4.1-nano': '2026-10-23',
+  'gpt-4.1-nano-2025-04-14': '2026-10-23',
+  'gpt-5-nano': '2026-12-11',
+  'gpt-5-nano-2025-08-07': '2026-12-11',
+  'gpt-5-mini': '2026-12-11',
+  'gpt-5-mini-2025-08-07': '2026-12-11'
+};
 
 // Storage keys
 export const STORAGE_KEYS = {
@@ -126,12 +141,12 @@ export const STORAGE_KEYS = {
   SHOW_BADGE: 'neutralizer_showbadge_v1',
   BADGE_COLLAPSED: 'neutralizer_badge_collapsed_v1',
   BADGE_POS: 'neutralizer_badge_pos_v1',
-  TEMPERATURE: 'neutralizer_temperature_v1',
   FIRST_INSTALL: 'neutralizer_installed_v1',
   API_TOKENS: 'neutralizer_api_tokens_v1',
   PRICING: 'neutralizer_pricing_v1',
   CACHE: 'neutralizer_cache_v1',
   MODEL: 'neutralizer_model_v1',
+  RETIRED_NOTICE: 'neutralizer_retired_notice_v1',
   CUSTOM_MODEL: 'neutralizer_custom_model_v1',
   OPENAI_KEY: 'OPENAI_KEY'
 };
@@ -149,12 +164,12 @@ export const DEFAULT_EXCLUDES = {
   ancestors: ['footer', 'nav', 'aside', '[role="navigation"]', '.breadcrumbs', '[aria-label*="breadcrumb" i]']
 };
 
-// Default API pricing (gpt-4.1-nano fast tier, verified 2026-07-31)
+// Default API pricing (gpt-6-luna fast tier, verified 2026-09-30)
 export const DEFAULT_PRICING = {
-  model: 'GPT-4.1 Nano Fast',
+  model: 'GPT-6 Luna Fast',
   inputPer1M: 0.20,    // USD per 1M input tokens
-  outputPer1M: 0.80,   // USD per 1M output tokens
-  lastUpdated: '2026-07-31',
+  outputPer1M: 1.00,   // USD per 1M output tokens
+  lastUpdated: '2026-09-30',
   source: 'https://developers.openai.com/api/docs/pricing'
 };
 

@@ -29,14 +29,14 @@
 // or offering as a service without a separate commercial license from the author.
 // Full text: https://polyformproject.org/licenses/internal-use/1.0.0/
 
-import { CFG, UI_ATTR, TEMPERATURE_LEVELS, STORAGE_KEYS, DEFAULT_SELECTORS, DEFAULT_EXCLUDES, MODEL_OPTIONS } from './modules/config.js';
+import { CFG, UI_ATTR, STORAGE_KEYS, DEFAULT_SELECTORS, DEFAULT_EXCLUDES, MODEL_OPTIONS } from './modules/config.js';
 import { log, textTrim, withinLen, isInViewportWithMargin, escapeHtml, registerMenuCommand } from './modules/utils.js';
 import { Storage } from './modules/storage.js';
 import { HeadlineCache } from './modules/cache.js';
 import { domainPatternToRegex, listMatchesHost } from './modules/selectors.js';
-import { initApiTracking, rewriteBatch, resetApiTokens, updatePricing, calculateApiCost, validateApiKey, API_TOKENS, PRICING, isQuotaExhausted } from './modules/api.js';
+import { initApiTracking, rewriteBatch, resetApiTokens, updatePricing, calculateApiCost, validateApiKey, API_TOKENS, PRICING, MODEL_NOTICE, MODEL_UNSAVED, isQuotaExhausted } from './modules/api.js';
 import { ensureHighlightCSS, isExcluded, getCandidateElements, applyRewrites, restoreOriginals, publisherOptOut } from './modules/dom.js';
-import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openTemperatureDialog, openModelSelectionDialog, showLongHeadlineDialog, showDiffAudit, openSelectorEditor, showToast } from './modules/settings.js';
+import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openModelSelectionDialog, showLongHeadlineDialog, showDiffAudit, openSelectorEditor, showToast } from './modules/settings.js';
 import { ensureBadge, updateBadgeCounts, reapplyFromCache } from './modules/badge.js';
 import { enterInspectionMode, showIncludedElements, exitIncludedElements } from './modules/inspection.js';
 
@@ -75,30 +75,15 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   let BADGE_POS = { x: window.innerWidth - 220, y: window.innerHeight - 200 };
   try { const v = await storage.get(STORAGE_KEYS.BADGE_POS, ''); if (v) BADGE_POS = JSON.parse(v); } catch {}
 
-  // Load temperature setting
-  let TEMPERATURE_LEVEL = 'Moderate';
-  try {
-    const v = await storage.get(STORAGE_KEYS.TEMPERATURE, '');
-    if (v !== '' && TEMPERATURE_LEVELS[v] !== undefined) {
-      TEMPERATURE_LEVEL = v;
-      CFG.temperature = TEMPERATURE_LEVELS[v];
-    }
-  } catch {}
-
-  // Load model setting; fall back to the default model when the stored
-  // selection no longer exists in MODEL_OPTIONS (MODEL_FALLBACK triggers a
-  // one-time notice after the badge is created)
-  let MODEL_FALLBACK = '';
-  try {
-    const v = await storage.get(STORAGE_KEYS.MODEL, '');
-    if (v !== '') {
-      if (MODEL_OPTIONS[v]) {
-        CFG.model = v;
-      } else {
-        MODEL_FALLBACK = v;
-      }
-    }
-  } catch {}
+  // The active model was resolved by initApiTracking. Save an unsaved model at
+  // once when there is nothing to tell the user (fresh install): otherwise the
+  // first-install and no-key early returns below skip saving, and once a key is
+  // added the empty selection would be taken for the legacy default and trigger
+  // a wrong 'switched' notice. (setModel cannot run this early: it clears the
+  // cache, which is created further down.)
+  if (MODEL_UNSAVED && !MODEL_NOTICE) {
+    try { await storage.set(STORAGE_KEYS.MODEL, CFG.model); } catch {}
+  }
 
   // Keep in-memory pricing in sync with the active model, so cost statistics
   // pick up corrected rates after a pricing or lineup change instead of using
@@ -114,13 +99,6 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   async function setDebug(on) { CFG.DEBUG = !!on; await storage.set(STORAGE_KEYS.DEBUG, String(CFG.DEBUG)); location.reload(); }
   async function setAutoDetect(on) { CFG.autoDetect = !!on; await storage.set(STORAGE_KEYS.AUTO_DETECT, String(CFG.autoDetect)); location.reload(); }
   async function setShowBadge(on) { SHOW_BADGE = !!on; await storage.set(STORAGE_KEYS.SHOW_BADGE, String(SHOW_BADGE)); location.reload(); }
-  async function setTemperature(level) {
-    if (TEMPERATURE_LEVELS[level] === undefined) return;
-    TEMPERATURE_LEVEL = level;
-    CFG.temperature = TEMPERATURE_LEVELS[level];
-    await storage.set(STORAGE_KEYS.TEMPERATURE, level);
-    location.reload();
-  }
   async function setModel(modelId) {
     if (!MODEL_OPTIONS[modelId]) return;
     CFG.model = modelId;
@@ -444,7 +422,6 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   );
 
   registerMenuCommand('--- Toggles ---', () => {});
-  registerMenuCommand(`Neutralization strength (${TEMPERATURE_LEVEL})`, () => openTemperatureDialog(storage, TEMPERATURE_LEVEL, setTemperature));
   registerMenuCommand(`Toggle auto-detect (${CFG.autoDetect ? 'ON' : 'OFF'})`, async () => { await setAutoDetect(!CFG.autoDetect); });
   registerMenuCommand(`Toggle DEBUG logs (${CFG.DEBUG ? 'ON' : 'OFF'})`, async () => { await setDebug(!CFG.DEBUG); });
   registerMenuCommand(`Toggle badge (${SHOW_BADGE ? 'ON' : 'OFF'})`, async () => { await setShowBadge(!SHOW_BADGE); });
@@ -527,9 +504,7 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
     onShowIncluded: () => showIncludedElements(SELECTORS, EXCLUDE),
     onStats: () => showDiffAudit(STATS, CHANGES, cache.cache, API_TOKENS, PRICING, calculateApiCost, escapeHtml, UI_ATTR),
     onFlushCache: async () => { await cache.clear(); resetAndReindex(); processVisibleNow(); },
-    onStrengthChange: (level) => setTemperature(level),
     onAutoDetectToggle: (on) => setAutoDetect(on),
-    strengthLevel: TEMPERATURE_LEVEL,
     autoDetectOn: CFG.autoDetect
   });
 
@@ -537,17 +512,25 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   attachTargets(document);
   ensureObserver();
 
-  // Notify users whose saved model was removed from MODEL_OPTIONS. Persisting
-  // the fallback via setModel makes this a one-time notice.
-  if (MODEL_FALLBACK) {
-    await setModel(CFG.model);
-    showToast(
-      `Your selected AI model (${MODEL_FALLBACK}) is no longer offered. Switched to ${MODEL_OPTIONS[CFG.model].name}.`,
-      {
-        actionLabel: 'Model settings',
-        onAction: () => openModelSelectionDialog(storage, CFG.model, setModel)
-      }
-    );
+  // One-time notice for users whose model changed or whose custom model was
+  // retired; it stays until closed and links to the model settings. The
+  // replacement model is saved here (not earlier), so users on disabled
+  // domains still see the notice on their next active page.
+  if (MODEL_NOTICE) {
+    let message;
+    if (MODEL_NOTICE.type === 'custom-retired') {
+      await storage.set(STORAGE_KEYS.RETIRED_NOTICE, MODEL_NOTICE.apiModel);
+      const date = new Date(`${MODEL_NOTICE.retiredOn}T00:00:00Z`).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+      message = `AI models have been updated. OpenAI retired ${MODEL_NOTICE.apiModel}, the model used by your custom model setting, on ${date}, so headlines will not be rewritten. Please choose another model.`;
+    } else {
+      await setModel(CFG.model);
+      message = `AI models have been updated. Your model (${MODEL_NOTICE.fromName}) is no longer available, so the script switched you to ${MODEL_OPTIONS[CFG.model].name}. You can choose another model in the model settings.`;
+    }
+    showToast(message, {
+      actionLabel: 'Model settings',
+      onAction: () => openModelSelectionDialog(storage, CFG.model, setModel),
+      timeoutMs: 0
+    });
   }
 
   // Coalesce mutation bursts: collect added elements and process them in one

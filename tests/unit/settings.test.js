@@ -282,26 +282,6 @@ news.*.org`;
         expect(selectors).toEqual(['h1', 'h2', '.headline']);
       });
     });
-
-    describe('Temperature level validation', () => {
-      it('should validate temperature range (0.0 - 0.5)', () => {
-        const validTemps = [0.0, 0.1, 0.2, 0.35, 0.5];
-
-        validTemps.forEach(temp => {
-          expect(temp).toBeGreaterThanOrEqual(0);
-          expect(temp).toBeLessThanOrEqual(0.5);
-        });
-      });
-
-      it('should reject out-of-range temperatures', () => {
-        const invalidTemps = [-0.1, 0.6, 1.0, 2.0];
-
-        invalidTemps.forEach(temp => {
-          const isValid = temp >= 0 && temp <= 0.5;
-          expect(isValid).toBe(false);
-        });
-      });
-    });
   });
 
   describe('Dialog state management logic', () => {
@@ -510,52 +490,6 @@ news.*.org`;
       exceptions.add('news.example.com');
 
       expect(exceptions.size).toBe(1);
-    });
-  });
-
-  describe('Temperature level mapping', () => {
-    it('should map temperature levels to numeric values', () => {
-      const TEMPERATURE_LEVELS = {
-        'Minimal': 0.0,
-        'Light': 0.1,
-        'Moderate': 0.2,
-        'Strong': 0.35,
-        'Maximum': 0.5
-      };
-
-      expect(TEMPERATURE_LEVELS['Minimal']).toBe(0.0);
-      expect(TEMPERATURE_LEVELS['Light']).toBe(0.1);
-      expect(TEMPERATURE_LEVELS['Moderate']).toBe(0.2);
-      expect(TEMPERATURE_LEVELS['Strong']).toBe(0.35);
-      expect(TEMPERATURE_LEVELS['Maximum']).toBe(0.5);
-    });
-
-    it('should store temperature level name', () => {
-      const selectedLevel = 'Moderate';
-      const TEMPERATURE_LEVELS = {
-        'Minimal': 0.0,
-        'Light': 0.1,
-        'Moderate': 0.2,
-        'Strong': 0.35,
-        'Maximum': 0.5
-      };
-
-      const temperatureValue = TEMPERATURE_LEVELS[selectedLevel];
-
-      expect(temperatureValue).toBe(0.2);
-    });
-
-    it('should validate temperature level exists', () => {
-      const TEMPERATURE_LEVELS = {
-        'Minimal': 0.0,
-        'Light': 0.1,
-        'Moderate': 0.2,
-        'Strong': 0.35,
-        'Maximum': 0.5
-      };
-
-      expect('Moderate' in TEMPERATURE_LEVELS).toBe(true);
-      expect('Invalid' in TEMPERATURE_LEVELS).toBe(false);
     });
   });
 });
