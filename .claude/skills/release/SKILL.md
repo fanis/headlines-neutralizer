@@ -71,18 +71,18 @@ If build fails, STOP and report errors. Do not proceed.
 git tag X.Y.Z
 ```
 
-### 9. Push Reminder
+### 9. Push
 
-Tell the user to manually run:
+Push the commit and the tag yourself (SSH auth works from the Bash tool through Pageant):
 ```bash
 git push
 git push origin X.Y.Z
 ```
 
-(Manual push required for authentication)
+Then check that the tag-triggered `Release` workflow succeeded with `gh run list --limit 3`.
 
 ## Notes
 
 - Stop immediately on any test or build failure
 - Always wait for user approval before committing
-- The user must push manually due to authentication requirements
+- Push the commit and tag yourself after the commit is approved; do not hand the push back to the user
