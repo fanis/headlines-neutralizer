@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-09-30
+
 ### Fixed
 - GPT-5.6 Luna and GPT-5.6 Terra Fast failed on every request with HTTP 400: the script sent `reasoning.effort: minimal`, which GPT-5.6 models reject (they accept none/low/medium/high/xhigh/max). Both presets are replaced by the GPT-6 lineup below; custom models can use GPT-5.6 with a supported effort.
 

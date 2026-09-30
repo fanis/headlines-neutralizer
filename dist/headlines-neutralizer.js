@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      2.6.1
+// @version      2.7.0
 // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -36,9 +36,12 @@
    * Configuration constants and settings
    */
 
+  // Default model id (a key of MODEL_OPTIONS)
+  const DEFAULT_MODEL = 'gpt-6-luna-priority';
+
   const CFG = {
-    model: 'gpt-4.1-nano-priority',  // Default model (can be changed via settings)
-    temperature: 0.2,
+    model: DEFAULT_MODEL,  // Active model (can be changed via settings)
+    temperature: 0.2,      // Sent only with reasoning effort 'none' (other efforts reject it)
     maxBatch: 24,
     DEBUG: false,
 
@@ -74,56 +77,46 @@
   const UI_ATTR = 'data-neutralizer-ui';
 
   // Available models with pricing
-  // Pricing source: https://developers.openai.com/api/docs/pricing (as of 2026-07-31)
-  // Note: OpenAI renamed "priority processing" to "Fast mode" on 2026-07-30 and it
-  // is billed at roughly 2x the standard tier (the old "no additional cost" note no
-  // longer holds). service_tier "priority" remains a valid API alias. Storage keys
-  // keep the -priority suffix so existing user selections are preserved.
+  // Pricing source: https://developers.openai.com/api/docs/pricing (as of 2026-09-30)
+  // Note: OpenAI renamed "priority processing" to "Fast mode" on 2026-07-30; it is
+  // billed at 2x the standard tier. service_tier "priority" remains a valid API
+  // alias. Fast model IDs keep the -priority suffix for consistency with stored
+  // selections.
+  // reasoning: the reasoning.effort sent with every request. Valid values differ
+  // per model family (GPT-5.6/GPT-6 reject 'minimal', GPT-6.1 Sol also rejects
+  // 'none'), so each entry names its own; '' sends no reasoning parameter.
+  // CFG.temperature is sent only with effort 'none': the API rejects temperature
+  // at any other effort.
   const MODEL_OPTIONS = {
-    'gpt-5-nano': {
-      name: 'GPT-5 Nano',
-      apiModel: 'gpt-5-nano',
-      description: 'Ultra-affordable - Best value',
-      inputPer1M: 0.05,
-      outputPer1M: 0.40,
-      recommended: false,
-      priority: false
-    },
-    'gpt-5.6-luna': {
-      name: 'GPT-5.6 Luna',
-      apiModel: 'gpt-5.6-luna',
-      description: 'Newest generation at low cost',
+    'gpt-6-luna-priority': {
+      name: 'GPT-6 Luna Fast',
+      apiModel: 'gpt-6-luna',
+      description: 'Fast processing, low cost - Best for headlines',
       inputPer1M: 0.20,
-      outputPer1M: 1.20,
-      recommended: false,
-      priority: false
-    },
-    'gpt-4.1-nano-priority': {
-      name: 'GPT-4.1 Nano Fast',
-      apiModel: 'gpt-4.1-nano',
-      description: 'Fast processing, affordable - Best for headlines',
-      inputPer1M: 0.20,
-      outputPer1M: 0.80,
+      outputPer1M: 1.00,
       recommended: true,
-      priority: true
+      priority: true,
+      reasoning: 'none'
     },
-    'gpt-5-mini-priority': {
-      name: 'GPT-5 Mini Fast',
-      apiModel: 'gpt-5-mini',
-      description: 'Better quality + faster processing',
-      inputPer1M: 0.45,
-      outputPer1M: 3.60,
+    'gpt-6-luna': {
+      name: 'GPT-6 Luna',
+      apiModel: 'gpt-6-luna',
+      description: 'Half the cost of Luna Fast, about 2 seconds slower per batch',
+      inputPer1M: 0.10,
+      outputPer1M: 0.50,
       recommended: false,
-      priority: true
+      priority: false,
+      reasoning: 'none'
     },
-    'gpt-5.6-terra-priority': {
-      name: 'GPT-5.6 Terra Fast',
-      apiModel: 'gpt-5.6-terra',
-      description: 'Newest flagship tier + faster processing (most expensive)',
+    'gpt-6.1-sol-priority': {
+      name: 'GPT-6.1 Sol Fast',
+      apiModel: 'gpt-6.1-sol',
+      description: 'Highest fidelity - Keeps quotes and shortens more (about 20x the cost of Luna Fast)',
       inputPer1M: 4.00,
-      outputPer1M: 24.00,
+      outputPer1M: 20.00,
       recommended: false,
-      priority: true
+      priority: true,
+      reasoning: 'low'
     }
   };
 
@@ -131,18 +124,40 @@
   const CUSTOM_MODEL_ID = 'custom';
 
   // Valid reasoning effort values for the custom model definition
-  const REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high'];
+  // ('minimal' is for original GPT-5 models; newer models use 'none' instead)
+  const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
-  // Temperature levels mapping
-  const TEMPERATURE_LEVELS = {
-    'Minimal': 0.0,
-    'Light': 0.1,
-    'Moderate': 0.2,
-    'Strong': 0.35,
-    'Maximum': 0.5
+  // Display names for model IDs that earlier versions offered, so the model
+  // change notice can name the user's previous model
+  const REMOVED_MODEL_NAMES = {
+    'gpt-4o-mini': 'GPT-4o Mini',
+    'gpt-5-nano': 'GPT-5 Nano',
+    'gpt-5-mini': 'GPT-5 Mini',
+    'gpt-5.2-priority': 'GPT-5.2 Priority',
+    'gpt-5.6-luna': 'GPT-5.6 Luna',
+    'gpt-4.1-nano-priority': 'GPT-4.1 Nano Fast',
+    'gpt-5-mini-priority': 'GPT-5 Mini Fast',
+    'gpt-5.6-terra-priority': 'GPT-5.6 Terra Fast',
+    [CUSTOM_MODEL_ID]: 'your custom model'
   };
 
-  const TEMPERATURE_ORDER = ['Minimal', 'Light', 'Moderate', 'Strong', 'Maximum'];
+  // Default model of versions up to 2.6.x. Those versions did not save the
+  // default selection, so an existing user with no saved model was using this one.
+  const LEGACY_DEFAULT_MODEL = 'gpt-4.1-nano-priority';
+
+  // OpenAI API model IDs with announced shutdown dates
+  // (https://developers.openai.com/api/docs/deprecations). An active custom model
+  // using one of them gets a one-time notice once the date has passed.
+  // gpt-5-nano and gpt-5-mini: OpenAI announced the shutdown of their 2025-08-07
+  // snapshots, which are the only snapshots behind those aliases.
+  const RETIRED_API_MODELS = {
+    'gpt-4.1-nano': '2026-10-23',
+    'gpt-4.1-nano-2025-04-14': '2026-10-23',
+    'gpt-5-nano': '2026-12-11',
+    'gpt-5-nano-2025-08-07': '2026-12-11',
+    'gpt-5-mini': '2026-12-11',
+    'gpt-5-mini-2025-08-07': '2026-12-11'
+  };
 
   // Storage keys
   const STORAGE_KEYS = {
@@ -160,12 +175,12 @@
     SHOW_BADGE: 'neutralizer_showbadge_v1',
     BADGE_COLLAPSED: 'neutralizer_badge_collapsed_v1',
     BADGE_POS: 'neutralizer_badge_pos_v1',
-    TEMPERATURE: 'neutralizer_temperature_v1',
     FIRST_INSTALL: 'neutralizer_installed_v1',
     API_TOKENS: 'neutralizer_api_tokens_v1',
     PRICING: 'neutralizer_pricing_v1',
     CACHE: 'neutralizer_cache_v1',
     MODEL: 'neutralizer_model_v1',
+    RETIRED_NOTICE: 'neutralizer_retired_notice_v1',
     CUSTOM_MODEL: 'neutralizer_custom_model_v1',
     OPENAI_KEY: 'OPENAI_KEY'
   };
@@ -183,12 +198,12 @@
     ancestors: ['footer', 'nav', 'aside', '[role="navigation"]', '.breadcrumbs', '[aria-label*="breadcrumb" i]']
   };
 
-  // Default API pricing (gpt-4.1-nano fast tier, verified 2026-07-31)
+  // Default API pricing (gpt-6-luna fast tier, verified 2026-09-30)
   const DEFAULT_PRICING = {
-    model: 'GPT-4.1 Nano Fast',
+    model: 'GPT-6 Luna Fast',
     inputPer1M: 0.20,    // USD per 1M input tokens
-    outputPer1M: 0.80,   // USD per 1M output tokens
-    lastUpdated: '2026-07-31',
+    outputPer1M: 1.00,   // USD per 1M output tokens
+    lastUpdated: '2026-09-30',
     source: 'https://developers.openai.com/api/docs/pricing'
   };
 
@@ -649,6 +664,21 @@
   let PRICING = { ...DEFAULT_PRICING };
 
   /**
+   * One-time model notice for the UI, set by initApiTracking:
+   *   { type: 'switched', fromName }  saved model no longer offered; CFG.model
+   *                                   holds the replacement
+   *   { type: 'custom-retired', apiModel, retiredOn }
+   *                                   active custom model shut down by OpenAI
+   */
+  let MODEL_NOTICE = null;
+
+  /**
+   * True when the active model must be saved: nothing was saved yet, or the saved
+   * model was replaced. Saving it makes the 'switched' notice one-time.
+   */
+  let MODEL_UNSAVED = false;
+
+  /**
    * Build a MODEL_OPTIONS entry from a user-defined model definition
    */
   function buildCustomModelOption(def) {
@@ -672,9 +702,10 @@
   }
 
   /**
-   * Initialize API tokens and pricing from storage
+   * Initialize API tokens, pricing and the active model from storage
+   * @param {Date} today - current date (injectable for tests)
    */
-  async function initApiTracking(storage) {
+  async function initApiTracking(storage, today = new Date()) {
     // Register the user-defined custom model, if configured, so model loading
     // and the selection dialog can treat it like any other entry
     try {
@@ -685,6 +716,38 @@
           MODEL_OPTIONS[CUSTOM_MODEL_ID] = buildCustomModelOption(def);
         }
       }
+    } catch {}
+
+    // Apply saved model preference. An existing user (API key set) with no saved
+    // model was on the legacy default. When the previous model is no longer
+    // offered, fall back to the default model and flag a 'switched' notice.
+    try {
+      const [modelRaw, keyRaw, retiredNoticeRaw] = await Promise.all([
+        storage.get(STORAGE_KEYS.MODEL, ''),
+        storage.get(STORAGE_KEYS.OPENAI_KEY, ''),
+        storage.get(STORAGE_KEYS.RETIRED_NOTICE, '')
+      ]);
+      let modelId = DEFAULT_MODEL;
+      const previous = modelRaw || (keyRaw ? LEGACY_DEFAULT_MODEL : '');
+      if (previous) {
+        if (MODEL_OPTIONS[previous]) {
+          modelId = previous;
+        } else {
+          MODEL_NOTICE = { type: 'switched', fromName: REMOVED_MODEL_NAMES[previous] || previous };
+        }
+      }
+      MODEL_UNSAVED = modelRaw !== modelId;
+
+      // Flag an active custom model whose API model OpenAI has shut down, once per
+      // retired model ID (the user must pick a replacement themselves)
+      if (modelId === CUSTOM_MODEL_ID) {
+        const apiModel = MODEL_OPTIONS[CUSTOM_MODEL_ID].apiModel;
+        const retiredOn = RETIRED_API_MODELS[apiModel];
+        if (retiredOn && today.toISOString().slice(0, 10) >= retiredOn && retiredNoticeRaw !== apiModel) {
+          MODEL_NOTICE = { type: 'custom-retired', apiModel, retiredOn };
+        }
+      }
+      CFG.model = modelId;
     } catch {}
 
     try {
@@ -922,8 +985,8 @@
       ' If the headline contains a direct quote inside quotation marks (English "…", Greek «…»), keep that quoted text verbatim.' +
       ' Aim ≤ 110 characters when possible. Return ONLY a JSON array of strings, same order as input.';
 
-    // Get model config (apiModel and priority flag)
-    const modelConfig = MODEL_OPTIONS[CFG.model] || MODEL_OPTIONS['gpt-4.1-nano-priority'];
+    // Get model config (apiModel, priority flag, reasoning effort)
+    const modelConfig = MODEL_OPTIONS[CFG.model] || MODEL_OPTIONS[DEFAULT_MODEL];
     const apiModel = modelConfig.apiModel;
 
     // Scale output tokens to batch size: ~120 tokens per headline, minimum 600
@@ -936,15 +999,15 @@
       input: JSON.stringify(safeInputs)
     };
 
-    // Reasoning effort: custom models with a configured effort use it; otherwise
-    // pick automatically by model family - GPT-5 models are reasoning models
-    // (minimal reasoning instead of temperature), older models get temperature
-    if (modelConfig.custom && modelConfig.reasoning) {
+    // Reasoning effort comes from the model entry (valid values differ per model
+    // family; empty sends no reasoning parameter). Temperature is only accepted
+    // with effort 'none', where a fixed low value keeps rewrites consistent
+    // (the API default is 1.0).
+    if (modelConfig.reasoning) {
       bodyObj.reasoning = { effort: modelConfig.reasoning };
-    } else if (apiModel.startsWith('gpt-5')) {
-      bodyObj.reasoning = { effort: 'minimal' };
-    } else {
-      bodyObj.temperature = CFG.temperature;
+      if (modelConfig.reasoning === 'none') {
+        bodyObj.temperature = CFG.temperature;
+      }
     }
 
     // Add service_tier for priority models
@@ -1652,7 +1715,7 @@
         </ol>
       </div>
       <p style="font-size:13px;color:#666;margin-top:16px"><strong>Domain control:</strong> By default, all websites are disabled. After setup, you can enable websites one by one via the menu, or toggle to "All domains with Denylist" mode to enable everywhere.</p>
-      <p style="font-size:13px;color:#666">The script uses GPT-4.1 Nano Priority by default (fast processing for headlines). You can change the model anytime via the menu. Your key is stored locally and never shared.</p>
+      <p style="font-size:13px;color:#666">The script uses GPT-6 Luna Fast by default (fast processing for headlines). You can change the model anytime via the menu. Your key is stored locally and never shared.</p>
       <div class="actions">
         <button class="btn secondary cancel">Maybe Later</button>
         <button class="btn primary continue">Set Up API Key</button>
@@ -1852,69 +1915,16 @@
     wrap.focus();
   }
 
-  /**
-   * Show temperature selection dialog
-   */
-  function openTemperatureDialog(storage, TEMPERATURE_LEVEL, setTemperature) {
-    const host = document.createElement('div');
-    host.setAttribute(UI_ATTR, '');
-    const shadow = host.attachShadow({ mode: 'open' });
-    const style = document.createElement('style');
-    style.textContent = `
-    .wrap{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.45);
-          display:flex;align-items:center;justify-content:center}
-    .modal{background:#fff;max-width:520px;width:92%;border-radius:10px;
-           box-shadow:0 10px 40px rgba(0,0,0,.35);padding:20px;box-sizing:border-box}
-    .modal h3{margin:0 0 16px;font:600 16px/1.2 system-ui,sans-serif}
-    .options{display:flex;flex-direction:column;gap:10px}
-    .option-btn{padding:14px 16px;border-radius:8px;border:2px solid #d0d0d0;background:#fff;
-                cursor:pointer;text-align:left;font:14px/1.4 system-ui,sans-serif;
-                transition:all 0.15s ease;display:flex;justify-content:space-between;align-items:center}
-    .option-btn:hover{background:#f8f9fa;border-color:#1a73e8}
-    .option-btn.selected{background:#e8f0fe;border-color:#1a73e8;font-weight:600}
-    .option-btn .label{flex:1}
-    .option-btn .value{color:#666;font-size:12px;margin-left:8px}
-    .option-btn .checkmark{color:#1a73e8;margin-left:8px;font-weight:bold}
-    .hint{margin:16px 0 0;color:#666;font:12px/1.4 system-ui,sans-serif;text-align:center}
-  `;
-    const wrap = document.createElement('div');
-    wrap.className = 'wrap';
-
-    const optionsHTML = TEMPERATURE_ORDER.map(level => {
-      const isSelected = level === TEMPERATURE_LEVEL;
-      const value = TEMPERATURE_LEVELS[level];
-      return `<button class="option-btn ${isSelected ? 'selected' : ''}" data-level="${level}">
-      <span class="label">${level}</span>
-      <span class="value">${value}</span>
-      ${isSelected ? '<span class="checkmark">✓</span>' : ''}
-    </button>`;
-    }).join('');
-
-    wrap.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true" aria-label="Neutralization Strength">
-      <h3>Neutralization Strength</h3>
-      <div class="options">
-        ${optionsHTML}
-      </div>
-      <p class="hint">Select how aggressively to neutralize headlines. Lower values preserve more of the original meaning.</p>
-    </div>`;
-
-    shadow.append(style, wrap);
-    document.body.appendChild(host);
-    const close = () => host.remove();
-
-    shadow.querySelectorAll('.option-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const level = btn.getAttribute('data-level');
-        await setTemperature(level);
-      });
-    });
-
-    wrap.addEventListener('click', e => { if (e.target === wrap) close(); });
-    shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
-    wrap.setAttribute('tabindex', '-1');
-    wrap.focus();
-  }
+  // Display labels for the custom model's reasoning effort options
+  const REASONING_LABELS = {
+    none: 'None (also sends temperature 0.2)',
+    minimal: 'Minimal (original GPT-5 models only)',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    xhigh: 'Extra high',
+    max: 'Max'
+  };
 
   /**
    * Show model selection dialog
@@ -2000,10 +2010,10 @@
         </label>
         <label class="custom-full">Reasoning effort
           <select class="custom-reasoning">
-            <option value="">Automatic (reasoning models: minimal; others: temperature)</option>
+            <option value="">Model default (no parameter sent)</option>
             ${REASONING_EFFORTS.map(effort => `
               <option value="${effort}" ${custom && custom.reasoning === effort ? 'selected' : ''}>
-                ${effort.charAt(0).toUpperCase() + effort.slice(1)}
+                ${REASONING_LABELS[effort]}
               </option>
             `).join('')}
           </select>
@@ -2126,7 +2136,8 @@
 
     shadow.append(style, div);
     document.body.appendChild(host);
-    setTimeout(dismiss, timeoutMs);
+    // timeoutMs 0 keeps the toast until the user closes it
+    if (timeoutMs > 0) setTimeout(dismiss, timeoutMs);
   }
 
   /**
@@ -2340,8 +2351,7 @@
       DOMAIN_DISABLED, OPTED_OUT, SHOW_BADGE, BADGE_COLLAPSED, BADGE_POS, storage,
       onInspect, restoreOriginals, reapplyFromCache,
       onEditSelectors, onShowIncluded, onStats, onFlushCache,
-      onStrengthChange, onAutoDetectToggle,
-      strengthLevel, autoDetectOn
+      onAutoDetectToggle, autoDetectOn
     } = opts;
 
     if ((DOMAIN_DISABLED || OPTED_OUT) || !SHOW_BADGE) return;
@@ -2358,11 +2368,6 @@
 
     badge.style.top = `${BADGE_POS.y}px`;
     badge.style.right = '0px';
-
-    // Build strength segmented control (1=Minimal .. 5=Maximum)
-    const strengthBtns = TEMPERATURE_ORDER.map((level, i) =>
-      `<button class="neutralizer-popover-option${level === strengthLevel ? ' neutralizer-popover-active' : ''}" data-strength="${escapeHtml(level)}" title="${escapeHtml(level)}">${i + 1}</button>`
-    ).join('');
 
     badge.innerHTML = `
     <div class="badge-handle" title="${BADGE_COLLAPSED.value ? 'Open' : 'Close'}">${BADGE_COLLAPSED.value ? '\u25C0' : '\u25B6'}</div>
@@ -2381,10 +2386,6 @@
       <button class="neutralizer-popover-item" data-action="inspect">Inspect Elements</button>
       <button class="neutralizer-popover-item" data-action="show-included">Show Included</button>
       <hr class="neutralizer-popover-sep">
-      <div class="neutralizer-popover-group">
-        <span class="neutralizer-popover-label">Strength</span>
-        <div class="neutralizer-popover-seg">${strengthBtns}</div>
-      </div>
       <div class="neutralizer-popover-group">
         <span class="neutralizer-popover-label">Auto-detect</span>
         <div class="neutralizer-popover-seg">
@@ -2440,15 +2441,6 @@
         else if (action === 'show-included') onShowIncluded?.();
         else if (action === 'stats') onStats?.();
         else if (action === 'flush-cache') onFlushCache?.();
-      });
-    });
-
-    // Strength segmented control
-    popover.querySelectorAll('[data-strength]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        popover.querySelectorAll('[data-strength]').forEach(b => b.classList.remove('neutralizer-popover-active'));
-        btn.classList.add('neutralizer-popover-active');
-        onStrengthChange?.(btn.dataset.strength);
       });
     });
 
@@ -3323,7 +3315,7 @@
   // @namespace    https://fanis.dev/userscripts
   // @author       Fanis Hatzidakis
   // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-  // @version      2.6.1
+  // @version      2.7.0
   // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
   // @match        *://*/*
   // @exclude      about:*
@@ -3377,30 +3369,15 @@
     let BADGE_POS = { x: window.innerWidth - 220, y: window.innerHeight - 200 };
     try { const v = await storage.get(STORAGE_KEYS.BADGE_POS, ''); if (v) BADGE_POS = JSON.parse(v); } catch {}
 
-    // Load temperature setting
-    let TEMPERATURE_LEVEL = 'Moderate';
-    try {
-      const v = await storage.get(STORAGE_KEYS.TEMPERATURE, '');
-      if (v !== '' && TEMPERATURE_LEVELS[v] !== undefined) {
-        TEMPERATURE_LEVEL = v;
-        CFG.temperature = TEMPERATURE_LEVELS[v];
-      }
-    } catch {}
-
-    // Load model setting; fall back to the default model when the stored
-    // selection no longer exists in MODEL_OPTIONS (MODEL_FALLBACK triggers a
-    // one-time notice after the badge is created)
-    let MODEL_FALLBACK = '';
-    try {
-      const v = await storage.get(STORAGE_KEYS.MODEL, '');
-      if (v !== '') {
-        if (MODEL_OPTIONS[v]) {
-          CFG.model = v;
-        } else {
-          MODEL_FALLBACK = v;
-        }
-      }
-    } catch {}
+    // The active model was resolved by initApiTracking. Save an unsaved model at
+    // once when there is nothing to tell the user (fresh install): otherwise the
+    // first-install and no-key early returns below skip saving, and once a key is
+    // added the empty selection would be taken for the legacy default and trigger
+    // a wrong 'switched' notice. (setModel cannot run this early: it clears the
+    // cache, which is created further down.)
+    if (MODEL_UNSAVED && !MODEL_NOTICE) {
+      try { await storage.set(STORAGE_KEYS.MODEL, CFG.model); } catch {}
+    }
 
     // Keep in-memory pricing in sync with the active model, so cost statistics
     // pick up corrected rates after a pricing or lineup change instead of using
@@ -3416,13 +3393,6 @@
     async function setDebug(on) { CFG.DEBUG = !!on; await storage.set(STORAGE_KEYS.DEBUG, String(CFG.DEBUG)); location.reload(); }
     async function setAutoDetect(on) { CFG.autoDetect = !!on; await storage.set(STORAGE_KEYS.AUTO_DETECT, String(CFG.autoDetect)); location.reload(); }
     async function setShowBadge(on) { SHOW_BADGE = !!on; await storage.set(STORAGE_KEYS.SHOW_BADGE, String(SHOW_BADGE)); location.reload(); }
-    async function setTemperature(level) {
-      if (TEMPERATURE_LEVELS[level] === undefined) return;
-      TEMPERATURE_LEVEL = level;
-      CFG.temperature = TEMPERATURE_LEVELS[level];
-      await storage.set(STORAGE_KEYS.TEMPERATURE, level);
-      location.reload();
-    }
     async function setModel(modelId) {
       if (!MODEL_OPTIONS[modelId]) return;
       CFG.model = modelId;
@@ -3746,7 +3716,6 @@
     );
 
     registerMenuCommand('--- Toggles ---', () => {});
-    registerMenuCommand(`Neutralization strength (${TEMPERATURE_LEVEL})`, () => openTemperatureDialog(storage, TEMPERATURE_LEVEL, setTemperature));
     registerMenuCommand(`Toggle auto-detect (${CFG.autoDetect ? 'ON' : 'OFF'})`, async () => { await setAutoDetect(!CFG.autoDetect); });
     registerMenuCommand(`Toggle DEBUG logs (${CFG.DEBUG ? 'ON' : 'OFF'})`, async () => { await setDebug(!CFG.DEBUG); });
     registerMenuCommand(`Toggle badge (${SHOW_BADGE ? 'ON' : 'OFF'})`, async () => { await setShowBadge(!SHOW_BADGE); });
@@ -3829,9 +3798,7 @@
       onShowIncluded: () => showIncludedElements(SELECTORS, EXCLUDE),
       onStats: () => showDiffAudit(STATS, CHANGES, cache.cache, API_TOKENS, PRICING, calculateApiCost, escapeHtml, UI_ATTR),
       onFlushCache: async () => { await cache.clear(); resetAndReindex(); processVisibleNow(); },
-      onStrengthChange: (level) => setTemperature(level),
       onAutoDetectToggle: (on) => setAutoDetect(on),
-      strengthLevel: TEMPERATURE_LEVEL,
       autoDetectOn: CFG.autoDetect
     });
 
@@ -3839,17 +3806,25 @@
     attachTargets(document);
     ensureObserver();
 
-    // Notify users whose saved model was removed from MODEL_OPTIONS. Persisting
-    // the fallback via setModel makes this a one-time notice.
-    if (MODEL_FALLBACK) {
-      await setModel(CFG.model);
-      showToast(
-        `Your selected AI model (${MODEL_FALLBACK}) is no longer offered. Switched to ${MODEL_OPTIONS[CFG.model].name}.`,
-        {
-          actionLabel: 'Model settings',
-          onAction: () => openModelSelectionDialog(storage, CFG.model, setModel)
-        }
-      );
+    // One-time notice for users whose model changed or whose custom model was
+    // retired; it stays until closed and links to the model settings. The
+    // replacement model is saved here (not earlier), so users on disabled
+    // domains still see the notice on their next active page.
+    if (MODEL_NOTICE) {
+      let message;
+      if (MODEL_NOTICE.type === 'custom-retired') {
+        await storage.set(STORAGE_KEYS.RETIRED_NOTICE, MODEL_NOTICE.apiModel);
+        const date = new Date(`${MODEL_NOTICE.retiredOn}T00:00:00Z`).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+        message = `AI models have been updated. OpenAI retired ${MODEL_NOTICE.apiModel}, the model used by your custom model setting, on ${date}, so headlines will not be rewritten. Please choose another model.`;
+      } else {
+        await setModel(CFG.model);
+        message = `AI models have been updated. Your model (${MODEL_NOTICE.fromName}) is no longer available, so the script switched you to ${MODEL_OPTIONS[CFG.model].name}. You can choose another model in the model settings.`;
+      }
+      showToast(message, {
+        actionLabel: 'Model settings',
+        onAction: () => openModelSelectionDialog(storage, CFG.model, setModel),
+        timeoutMs: 0
+      });
     }
 
     // Coalesce mutation bursts: collect added elements and process them in one
