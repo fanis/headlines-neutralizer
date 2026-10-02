@@ -3,12 +3,13 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      2.7.0
+// @version      2.7.1
 // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
 // @exclude      moz-extension:*
 // @run-at       document-end
+// @noframes
 // @grant        GM.xmlHttpRequest
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
@@ -3315,12 +3316,13 @@
   // @namespace    https://fanis.dev/userscripts
   // @author       Fanis Hatzidakis
   // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-  // @version      2.7.0
+  // @version      2.7.1
   // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
   // @match        *://*/*
   // @exclude      about:*
   // @exclude      moz-extension:*
   // @run-at       document-end
+  // @noframes
   // @grant        GM.xmlHttpRequest
   // @grant        GM_xmlhttpRequest
   // @grant        GM_getValue

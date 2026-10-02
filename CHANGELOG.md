@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-10-02
+
+### Fixed
+- Violentmonkey could show "undefined is not a function" when you clicked a menu command of another userscript (seen on mubi.com with Summarize The Web). The script ran in iframes, and Violentmonkey sends menu commands to every frame. In a frame where page injection failed, Violentmonkey threw on a command for a script that the frame did not run. The script now declares `@noframes`, so userscript managers no longer inject it into iframes. It already exited in iframes, so its behavior does not change.
+
 ## [2.7.0] - 2026-09-30
 
 ### Fixed
