@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      2.7.1
+// @version      2.8.0
 // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -1345,6 +1345,81 @@
   }
 
   /**
+   * Check if element holds structured content (lists, tables, quotes) rather
+   * than a headline. Headings and selectors like `.summary` can wrap whole
+   * blocks, such as an accordion `<h3><button>` around an AI-summary bullet list;
+   * rewriting them sends long text to the API and flattens the markup. The
+   * element itself counts too: a text host can resolve to a bare <ul>.
+   */
+  const STRUCTURED_SELECTOR = 'ul, ol, dl, table, blockquote';
+  function isStructuredContent(el) {
+    return !!(el.matches?.(STRUCTURED_SELECTOR) || el.querySelector?.(STRUCTURED_SELECTOR));
+  }
+
+  /**
+   * Check if a candidate is too short to be a headline. Section headings such
+   * as "Sport", "Most read" or "ΣΧΕΤΙΚΑ ΝΕΑ" match h2/h3 selectors; one or two
+   * words leave nothing to neutralize.
+   */
+  function isTooShort(el) {
+    const t = textTrim(el);
+    return t.length < CFG.minLen || words(t).length < CFG.minWords;
+  }
+
+  // schema.org types that mark a page as a single article. LiveBlogPosting is
+  // left out: its update titles work like a listing.
+  const ARTICLE_TYPES = new Set([
+    'Article', 'NewsArticle', 'ReportageNewsArticle', 'AnalysisNewsArticle',
+    'OpinionNewsArticle', 'BackgroundNewsArticle', 'ReviewNewsArticle', 'BlogPosting'
+  ]);
+
+  /**
+   * Check if the page is a single article rather than a listing, from a
+   * top-level JSON-LD article type. Article types nested inside a listing's
+   * JSON-LD (ItemList entries) do not count. og:type is not used: some
+   * homepages (npr.org) declare og:type=article.
+   */
+  function isArticlePage(doc = document) {
+    for (const script of doc.querySelectorAll('script[type="application/ld+json"]')) {
+      let data;
+      try { data = JSON.parse(script.textContent); } catch { continue; }
+      const items = [data].flat().flatMap(d => (d && d['@graph']) ? [d, ...[d['@graph']].flat()] : [d]);
+      if (items.some(d => [d?.['@type']].flat().some(t => ARTICLE_TYPES.has(t)))) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Check if a candidate is part of the article's own text: inside the article
+   * body, or inside an <article> that holds the page headline (h1). The h1
+   * itself and links to other articles (related, most read) stay candidates.
+   */
+  function isArticleContent(el) {
+    if (el.closest('h1')) return false;
+    if (el.closest('a[href]') || el.querySelector('a[href]')) return false;
+    if (el.closest('[itemprop="articleBody"]')) return true;
+    return !!el.closest('article')?.querySelector('h1');
+  }
+
+  /**
+   * Reasons a candidate text host is skipped as not a headline (empty when it
+   * is processed). Shared by the pipeline and the inspection views so they agree.
+   */
+  function getSkipReasons(el, articlePage) {
+    const reasons = [];
+    if (isStructuredContent(el)) {
+      reasons.push('Contains a list, table or quote, so it is not treated as a headline');
+    }
+    if (isTooShort(el)) {
+      reasons.push(`Shorter than ${CFG.minWords} words or ${CFG.minLen} characters, too short to be a headline`);
+    }
+    if (articlePage && isArticleContent(el)) {
+      reasons.push('Part of the article text on an article page (only the main headline and links to other articles are processed)');
+    }
+    return reasons;
+  }
+
+  /**
    * Get manually matched elements via selectors
    */
   function getManualMatches(root, SELECTORS) {
@@ -1420,13 +1495,18 @@
    * Get all candidate elements (manual + auto)
    */
   function getCandidateElements(root, SELECTORS, EXCLUDE) {
-    const manual = getManualMatches(root, SELECTORS).map(el => ({ el: findTextHost(el), mode: 'manual' }));
+    // Check exclusions on the matched element too, not only on the text host it
+    // resolves to: excluding a matched heading must also exclude its inner host
+    const manual = getManualMatches(root, SELECTORS)
+      .filter(el => !isExcluded(el, EXCLUDE))
+      .map(el => ({ el: findTextHost(el), mode: 'manual' }));
     const auto = discoverCandidates(root, EXCLUDE).map(el => ({ el, mode: 'auto' }));
+    const articlePage = isArticlePage();
     const uniq = [];
     const seen = new Set();
     for (const rec of [...manual, ...auto]) {
       const el = rec.el;
-      if (!el || isExcluded(el, EXCLUDE)) continue;
+      if (!el || isExcluded(el, EXCLUDE) || getSkipReasons(el, articlePage).length) continue;
       if (seen.has(el)) continue;
       seen.add(el);
       uniq.push(rec);
@@ -2142,99 +2222,6 @@
   }
 
   /**
-   * Show long headline warning dialog
-   */
-  function showLongHeadlineDialog(elements, HOST, CFG) {
-    return new Promise((resolve) => {
-      const host = document.createElement('div');
-      host.setAttribute(UI_ATTR, '');
-      const shadow = host.attachShadow({ mode: 'open' });
-
-      const style = document.createElement('style');
-      style.textContent = `
-      .wrap { position: fixed; inset: 0; z-index: 2147483647; background: rgba(0,0,0,.55);
-              display: flex; align-items: center; justify-content: center; }
-      .modal { background: #fff; max-width: 600px; width: 92%; border-radius: 12px;
-               box-shadow: 0 10px 40px rgba(0,0,0,.4); padding: 20px; box-sizing: border-box; }
-      .modal h3 { margin: 0 0 16px; font: 700 18px/1.3 system-ui, sans-serif; color: #1a1a1a; }
-      .modal p { margin: 0 0 12px; font: 14px/1.6 system-ui, sans-serif; color: #444; }
-      .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px;
-                 margin: 16px 0; border-radius: 4px; }
-      .warning-icon { font-size: 20px; margin-right: 8px; }
-      .element-list { background: #f8f9fa; padding: 12px; border-radius: 6px; margin: 12px 0;
-                      max-height: 200px; overflow-y: auto; }
-      .element-item { font: 12px/1.5 ui-monospace, Consolas, monospace; color: #666;
-                      margin: 6px 0; padding: 6px; background: #fff; border-radius: 4px; }
-      .element-length { color: #d32f2f; font-weight: 600; }
-      .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
-      .btn { padding: 10px 20px; border-radius: 8px; border: none;
-             font: 600 14px system-ui, sans-serif; cursor: pointer; transition: all 0.15s ease; }
-      .btn.primary { background: #1a73e8; color: #fff; }
-      .btn.primary:hover { background: #1557b0; }
-      .btn.success { background: #34a853; color: #fff; }
-      .btn.success:hover { background: #2d8e47; }
-      .btn.secondary { background: #e8eaed; color: #1a1a1a; }
-      .btn.secondary:hover { background: #dadce0; }
-    `;
-
-      const wrap = document.createElement('div');
-      wrap.className = 'wrap';
-
-      const elementListHTML = elements.slice(0, 5).map(({ text, length }) => `
-      <div class="element-item">
-        <span class="element-length">${length} chars:</span> ${escapeHtml(text.substring(0, 80))}${text.length > 80 ? '...' : ''}
-      </div>
-    `).join('');
-
-      const moreText = elements.length > 5 ? `<p style="text-align:center; font-size:12px; color:#666; margin-top:8px;">...and ${elements.length - 5} more</p>` : '';
-
-      wrap.innerHTML = `
-      <div class="modal" role="dialog" aria-modal="true" aria-label="Long Headlines Detected">
-        <h3>⚠️ Excessively Long Headlines Detected</h3>
-
-        <div class="warning">
-          <span class="warning-icon">⚠️</span>
-          <strong>Your manual selectors matched ${elements.length} element(s) with text longer than ${CFG.sanityCheckLen} characters.</strong>
-        </div>
-
-        <p>These might be entire paragraphs, navigation menus, or article bodies rather than headlines. Processing them will consume unnecessary API tokens.</p>
-
-        <div class="element-list">
-          ${elementListHTML}
-          ${moreText}
-        </div>
-
-        <p><strong>Would you like to process these anyway?</strong></p>
-
-        <div class="actions">
-          <button class="btn secondary skip">Skip These</button>
-          <button class="btn primary process-once">Process Once</button>
-          <button class="btn success remember">Process & Remember for ${escapeHtml(HOST)}</button>
-        </div>
-      </div>
-    `;
-
-      shadow.append(style, wrap);
-      document.body.appendChild(host);
-
-      const close = (result) => {
-        host.remove();
-        resolve(result);
-      };
-
-      shadow.querySelector('.skip').addEventListener('click', () => close(false));
-      shadow.querySelector('.process-once').addEventListener('click', () => close('once'));
-      shadow.querySelector('.remember').addEventListener('click', () => close(true));
-
-      wrap.addEventListener('click', e => { if (e.target === wrap) close(false); });
-      shadow.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(false); } });
-
-      wrap.setAttribute('tabindex', '-1');
-      wrap.focus();
-    });
-  }
-
-  /**
    * Show diff audit (stats and changes)
    */
   function showDiffAudit(STATS, CHANGES, CACHE, API_TOKENS, PRICING, calculateApiCost, escapeHtml, UI_ATTR) {
@@ -2803,10 +2790,12 @@
       try { manualEls = [...document.querySelectorAll(selectorStr)]; } catch {}
     }
     const manualSet = new Set(manualEls);
+    const articlePage = isArticlePage();
 
     for (const el of manualEls) {
       if (el.closest(`[${UI_ATTR}]`)) continue;
-      const excluded = isExcluded(el, EXCLUDE);
+      // Mirror getCandidateElements, which skips hosts that are not headlines
+      const excluded = isExcluded(el, EXCLUDE) || getSkipReasons(findTextHost(el), articlePage).length > 0;
       const color = excluded ? '#ea4335' : '#34a853';
       saved.push({ el, boxShadow: el.style.boxShadow });
       el.style.boxShadow = `inset 0 0 0 2px ${color}`;
@@ -2915,8 +2904,21 @@
     const globalExclusions = findMatchingExclusions(el, EXCLUDE_GLOBAL);
     const domainExclusions = findMatchingExclusions(el, EXCLUDE_DOMAIN);
 
+    // Matches are rewritten through their text host; mirror the checks that
+    // getCandidateElements and attachTargets apply to it before processing
+    const matchedBySelector = globalSelectors.length > 0 || domainSelectors.length > 0;
+    const skipReasons = [];
+    if (matchedBySelector || autoDetect.matched) {
+      const textHost = findTextHost(el);
+      skipReasons.push(...getSkipReasons(textHost, isArticlePage()));
+      const hostLen = textTrim(textHost).length;
+      if (matchedBySelector && hostLen > CFG.sanityCheckLen) {
+        skipReasons.push(`Text is ${hostLen} characters, over the ${CFG.sanityCheckLen}-character limit for selector matches (unless this site has a long-text exception from an earlier version)`);
+      }
+    }
+
     const hasOptOut = publisherOptOut();
-    const isProcessed = !isExcluded(el, EXCLUDE) && (autoDetect.matched || globalSelectors.length > 0 || domainSelectors.length > 0);
+    const isProcessed = !isExcluded(el, EXCLUDE) && skipReasons.length === 0 && (autoDetect.matched || matchedBySelector);
 
     return {
       element: el,
@@ -2932,6 +2934,7 @@
       domainExclusions,
       hasOptOut,
       isExcluded: isExcluded(el, EXCLUDE),
+      skipReasons,
       isProcessed
     };
   }
@@ -3084,6 +3087,9 @@
     if (diag.isExcluded) {
       statusClass = 'excluded';
       statusText = '⚠️ EXCLUDED - Not being processed';
+    } else if (diag.skipReasons.length > 0) {
+      statusClass = 'excluded';
+      statusText = '⚠️ SKIPPED - Matched, but not a headline';
     } else if (diag.isProcessed) {
       statusClass = 'processed';
       statusText = '✅ MATCHED - Being processed';
@@ -3132,6 +3138,11 @@
       </div>
 
       <div class="status ${statusClass}">${statusText}</div>
+
+      ${diag.skipReasons.length > 0 ? `<div class="section">
+        <div class="section-title">Why It Is Skipped</div>
+        <ul class="list">${diag.skipReasons.map(r => `<li class="problem">✗ ${escapeHtml(r)}</li>`).join('')}</ul>
+      </div>` : ''}
 
       <div class="section">
         <div class="section-title">Auto-Detection Analysis</div>
@@ -3234,7 +3245,8 @@
       });
     }
 
-    if (!diag.isProcessed && !diag.isExcluded) {
+    // Adding a selector cannot help an element that is skipped as not a headline
+    if (!diag.isProcessed && !diag.isExcluded && diag.skipReasons.length === 0) {
       buttons.push(`<button class="btn success add-global-sel">Add as Global Selector</button>`);
       buttons.push(`<button class="btn success add-domain-sel">Add as Domain Selector</button>`);
     }
@@ -3316,7 +3328,7 @@
   // @namespace    https://fanis.dev/userscripts
   // @author       Fanis Hatzidakis
   // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-  // @version      2.7.1
+  // @version      2.8.0
   // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
   // @match        *://*/*
   // @exclude      about:*
@@ -3469,7 +3481,6 @@
     let IO = null;
     const pending = new Set();
     let flushTimer = null;
-    let longHeadlineCheckPending = false;
     // Set when the API can no longer succeed without user action (e.g. exhausted
     // credits/quota). Stops further flushes so we don't hammer a failing endpoint.
     let apiHalted = false;
@@ -3604,7 +3615,7 @@
     }
 
     // Attach targets
-    async function attachTargets(root = document) {
+    function attachTargets(root = document) {
       // getCandidateElements already resolves each match to its text host
       const candidates = getCandidateElements(root, SELECTORS, EXCLUDE)
         .filter(({ el, mode }) => {
@@ -3613,37 +3624,17 @@
           return true;
         });
 
-      const excessivelyLong = [];
-      const hostsToAttach = [];
-
       for (const { el: host, mode } of candidates) {
         const text = textTrim(host);
 
+        // Manual selectors can match containers (summaries, article bodies) instead
+        // of headlines. Skip those silently rather than spending tokens on them;
+        // a stored per-domain exception from earlier versions still allows them.
         if (mode === 'manual' && text.length > CFG.sanityCheckLen && !LONG_HEADLINE_EXCEPTIONS[HOST]) {
-          excessivelyLong.push({ host, text, length: text.length });
-        } else {
-          hostsToAttach.push({ host, mode, text });
+          log(`skipping manual match longer than ${CFG.sanityCheckLen} chars (${text.length}):`, text.slice(0, 80));
+          continue;
         }
-      }
 
-      if (excessivelyLong.length > 0 && !longHeadlineCheckPending) {
-        longHeadlineCheckPending = true;
-        const result = await showLongHeadlineDialog(excessivelyLong, HOST, CFG);
-        longHeadlineCheckPending = false;
-
-        if (result) {
-          for (const { host, text } of excessivelyLong) {
-            hostsToAttach.push({ host, mode: 'manual', text });
-          }
-
-          if (result === true) {
-            LONG_HEADLINE_EXCEPTIONS[HOST] = true;
-            await storage.set(STORAGE_KEYS.LONG_HEADLINE_EXCEPTIONS, JSON.stringify(LONG_HEADLINE_EXCEPTIONS));
-          }
-        }
-      }
-
-      for (const { host, mode, text } of hostsToAttach) {
         host.setAttribute('data-neutralizer-mode', mode);
         let set = textToElements.get(text);
         if (!set) { set = new Set(); textToElements.set(text, set); }
@@ -3724,7 +3715,7 @@
 
     if (LONG_HEADLINE_EXCEPTIONS[HOST]) {
       registerMenuCommand(`Clear long headline exception (${HOST})`, async () => {
-        if (confirm(`Clear the long headline exception for ${HOST}?\n\nYou'll be prompted again if selectors match text longer than ${CFG.sanityCheckLen} characters.`)) {
+        if (confirm(`Clear the long headline exception for ${HOST}?\n\nText longer than ${CFG.sanityCheckLen} characters matched by selectors will be skipped again.`)) {
           delete LONG_HEADLINE_EXCEPTIONS[HOST];
           await storage.set(STORAGE_KEYS.LONG_HEADLINE_EXCEPTIONS, JSON.stringify(LONG_HEADLINE_EXCEPTIONS));
           openInfo(`Cleared long headline exception for ${HOST}.\n\nReload the page to see changes.`);

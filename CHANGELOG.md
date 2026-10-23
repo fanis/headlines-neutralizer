@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unreleased]
+## [2.8.0] - 2026-10-23
 
 ### Changed
 - **No more "Excessively Long Headlines Detected" prompt.** Text longer than 500 characters matched by selectors is now skipped silently instead of asking what to do on every page. Headlines are never that long, so these matches are summaries, menus or article text. Sites with a "Process & Remember" exception from earlier versions keep it, and the menu command to clear it remains.

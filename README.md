@@ -1,6 +1,6 @@
 # Neutralize Headlines Userscript - Setup & Usage Guide
 
-> **Latest Version**: 2.7.1 | [See What's New](CHANGELOG.md)
+> **Latest Version**: 2.8.0 | [See What's New](CHANGELOG.md)
 
 ![Original vs neutralized headlines](screenshots/hero.jpg)
 
