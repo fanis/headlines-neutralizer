@@ -72,8 +72,9 @@ jobs:
           sed -i "s|^// @version      .*|// @version      $NEW_VERSION|" src/banner.txt src/main.js
           sed -i "s|^> \*\*Latest Version\*\*: [0-9.]*|> **Latest Version**: $NEW_VERSION|" README.md
 
-          # Promote [Unreleased] to the new version
-          sed -i "s|^## \[Unreleased\]|## [$NEW_VERSION] - $(date -u +%Y-%m-%d)|" CHANGELOG.md
+          # Promote [Unreleased] to the new version, leaving a fresh empty
+          # [Unreleased] section above it for the next release's notes
+          sed -i "s|^## \[Unreleased\]|## [Unreleased]\n\n## [$NEW_VERSION] - $(date -u +%Y-%m-%d)|" CHANGELOG.md
 
           # All version references must agree
           for f in src/banner.txt src/main.js; do

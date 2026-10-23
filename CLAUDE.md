@@ -49,7 +49,7 @@ npm run test:all   # Run all tests
 
 ## Releasing Remotely
 
-- `Cut Release` GitHub Action (`.github/workflows/cut-release.yml`, `workflow_dispatch`) cuts a release without a local machine: bumps the version in all 4 places (package.json, banner.txt, main.js, README), promotes the CHANGELOG `[Unreleased]` section, runs unit + E2E tests, builds, commits, tags, and publishes a GitHub Release with dist attached
+- `Cut Release` GitHub Action (`.github/workflows/cut-release.yml`, `workflow_dispatch`) cuts a release without a local machine: bumps the version in all 4 places (package.json, banner.txt, main.js, README), promotes the CHANGELOG `[Unreleased]` section (leaving a fresh empty one above it), runs unit + E2E tests, builds, commits, tags, and publishes a GitHub Release with dist attached
 - It requires a non-empty `[Unreleased]` section in CHANGELOG.md - add release notes before triggering
 - Inputs: `bump` (patch/minor/major) and optional `summary` (appended to the commit message)
 - Trigger it from Claude Code on the web via the GitHub Actions trigger tool, or from the GitHub Actions tab
