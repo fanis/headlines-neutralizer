@@ -209,6 +209,15 @@ export function isStructuredContent(el) {
 }
 
 /**
+ * Check if a selector match is too short to be a headline. Section headings
+ * such as "Sport" or "Opinion" match h2/h3 selectors; auto-detect already
+ * rejects them through its CFG.minLen check.
+ */
+export function isTooShort(el) {
+  return textTrim(el).length < CFG.minLen;
+}
+
+/**
  * Get manually matched elements via selectors
  */
 export function getManualMatches(root, SELECTORS) {
@@ -295,6 +304,7 @@ export function getCandidateElements(root, SELECTORS, EXCLUDE) {
   for (const rec of [...manual, ...auto]) {
     const el = rec.el;
     if (!el || isExcluded(el, EXCLUDE) || isStructuredContent(el)) continue;
+    if (rec.mode === 'manual' && isTooShort(el)) continue;
     if (seen.has(el)) continue;
     seen.add(el);
     uniq.push(rec);

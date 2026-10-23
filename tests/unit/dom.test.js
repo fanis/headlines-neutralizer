@@ -58,6 +58,16 @@ describe('getCandidateElements', () => {
     expect(els.some(el => el.closest('h3'))).toBe(false);
   });
 
+  it('skips selector matches shorter than the minimum length, such as section labels', () => {
+    document.body.innerHTML = `
+      <h2>Sport</h2>
+      <h2><a href="#">Κόσμος</a></h2>
+      <h2>Council approves new budget for schools</h2>
+    `;
+    const els = getCandidateElements(document, ['h2'], NO_EXCLUDES).map(r => r.el);
+    expect(els.map(el => el.textContent)).toEqual(['Council approves new budget for schools']);
+  });
+
   it('applies a self exclusion on the matched element to its inner text host', () => {
     document.body.innerHTML = `
       <h3 class="accordion"><button type="button">A heading wrapped in a button element</button></h3>
@@ -90,6 +100,15 @@ describe('diagnoseElement', () => {
     const diag = diagnoseElement(h1, ['h1', 'h3'], [], NO_EXCLUDES, NO_EXCLUDES, NO_EXCLUDES);
     expect(diag.isProcessed).toBe(true);
     expect(diag.skipReasons).toEqual([]);
+  });
+
+  it('reports a short section label as skipped', () => {
+    const h2 = document.createElement('h2');
+    h2.textContent = 'Sport';
+    document.body.appendChild(h2);
+    const diag = diagnoseElement(h2, ['h2'], [], NO_EXCLUDES, NO_EXCLUDES, NO_EXCLUDES);
+    expect(diag.isProcessed).toBe(false);
+    expect(diag.skipReasons[0]).toMatch(/minimum for headlines/);
   });
 
   it('reports selector matches over the length limit as skipped', () => {

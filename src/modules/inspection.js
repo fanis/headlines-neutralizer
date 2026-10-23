@@ -6,7 +6,7 @@ import { UI_ATTR, CFG, CARD_SELECTOR, UI_CONTAINERS, STORAGE_KEYS } from './conf
 import { textTrim, withinLen, escapeHtml } from './utils.js';
 import { compiledSelectors } from './selectors.js';
 import { isLikelyKicker } from './scoring.js';
-import { isExcluded, isStructuredContent, findTextHost, publisherOptOut } from './dom.js';
+import { isExcluded, isStructuredContent, isTooShort, findTextHost, publisherOptOut } from './dom.js';
 
 let inspectionOverlay = null;
 let inspectedElement = null;
@@ -197,8 +197,10 @@ export function showIncludedElements(SELECTORS, EXCLUDE) {
 
   for (const el of manualEls) {
     if (el.closest(`[${UI_ATTR}]`)) continue;
-    // Mirror getCandidateElements: structured blocks (lists, tables) are skipped
-    const excluded = isExcluded(el, EXCLUDE) || isStructuredContent(findTextHost(el));
+    // Mirror getCandidateElements: structured blocks (lists, tables) and short
+    // labels are skipped
+    const textHost = findTextHost(el);
+    const excluded = isExcluded(el, EXCLUDE) || isStructuredContent(textHost) || isTooShort(textHost);
     const color = excluded ? '#ea4335' : '#34a853';
     saved.push({ el, boxShadow: el.style.boxShadow });
     el.style.boxShadow = `inset 0 0 0 2px ${color}`;
@@ -317,6 +319,9 @@ export function diagnoseElement(el, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_
       skipReasons.push('Contains a list, table or quote, so it is not treated as a headline');
     }
     const hostLen = textTrim(textHost).length;
+    if (isTooShort(textHost)) {
+      skipReasons.push(`Text is ${hostLen} characters, under the ${CFG.minLen}-character minimum for headlines`);
+    }
     if (matchedBySelector && hostLen > CFG.sanityCheckLen) {
       skipReasons.push(`Text is ${hostLen} characters, over the ${CFG.sanityCheckLen}-character limit for selector matches (unless this site has a long-text exception from an earlier version)`);
     }
