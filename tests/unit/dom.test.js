@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { CFG } from '../../src/modules/config.js';
 import { getCandidateElements, isStructuredContent, isArticlePage } from '../../src/modules/dom.js';
-import { diagnoseElement } from '../../src/modules/inspection.js';
+import { diagnoseElement, showIncludedElements, exitIncludedElements } from '../../src/modules/inspection.js';
 
 const NO_EXCLUDES = { self: [], ancestors: [] };
 
@@ -202,5 +202,34 @@ describe('diagnoseElement', () => {
     document.head.innerHTML = '';
     expect(diag.isProcessed).toBe(false);
     expect(diag.skipReasons[0]).toMatch(/article text on an article page/);
+  });
+});
+
+describe('showIncludedElements auto-detected highlighting', () => {
+  const BLUE = 'inset 0 0 0 2px #1a73e8';
+  let autoDetect;
+  beforeEach(() => {
+    autoDetect = CFG.autoDetect;
+    CFG.autoDetect = true;
+    // jsdom has no layout, so auto-detect would treat every element as hidden
+    Element.prototype.checkVisibility = () => true;
+    document.body.innerHTML = `
+      <article class="card">
+        <h2><a href="/a" style="font-size: 24px; font-weight: 700">Council approves new budget for schools after long debate</a></h2>
+        <div class="byline"><h4>Stefanos Evripidou</h4></div>
+      </article>
+    `;
+  });
+  afterEach(() => {
+    exitIncludedElements();
+    CFG.autoDetect = autoDetect;
+    delete Element.prototype.checkVisibility;
+  });
+
+  it('highlights only what processing picks, not every heading auto-detect considers', () => {
+    showIncludedElements([], NO_EXCLUDES);
+    const blue = [...document.querySelectorAll('article *')].filter(el => el.style.boxShadow === BLUE);
+    expect(blue.map(el => el.textContent)).toEqual(['Council approves new budget for schools after long debate']);
+    expect(document.querySelector('.neutralizer-included-banner').textContent).toMatch(/1 auto-detected/);
   });
 });

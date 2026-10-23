@@ -31,13 +31,25 @@ npm run test:all   # Run all tests
 - Run `npm test -- --run` for single-run mode (no watch)
 - The suite must finish with zero unhandled errors (vitest exits non-zero on unhandled rejections, which fails CI). In error-path tests, attach `expect(...).rejects` BEFORE `await vi.runAllTimersAsync()`, not after
 
+## Measurements and Factual Claims
+
+- Sample pages only from URLs found in real links or given by the user; never construct a URL
+- After fetching, verify each page before using it: HTTP status, `<title>`, and the expected content (no 404, bot-check or consent pages). List the final sample with what each page is before reporting results
+- Keep one copy of each page in one folder; never count a page twice
+- Every number reported must come from script output in the session. No mental arithmetic for totals or percentages
+- Before/after comparisons use the same script, filters and sample for both sides
+- State the sample size and caveats next to each figure
+- "All", "every", "none" and "only" claims require having inspected every item, not a subset
+- Before reporting measurements, re-check them once: what could make each number wrong?
+- Don't put measured figures in committed files (CHANGELOG, README, commit messages) unless they were re-verified on the final sample
+
 ## Custom Skills
 
 - `/release [patch|minor|major]` - Full release workflow with version bump, docs check, tests, build, commit, and tag
 
 ## Releasing Remotely
 
-- `Cut Release` GitHub Action (`.github/workflows/cut-release.yml`, `workflow_dispatch`) cuts a release without a local machine: bumps the version in all 4 places (package.json, banner.txt, main.js, README), promotes the CHANGELOG `[Unreleased]` section, runs unit + E2E tests, builds, commits, tags, and publishes a GitHub Release with dist attached
+- `Cut Release` GitHub Action (`.github/workflows/cut-release.yml`, `workflow_dispatch`) cuts a release without a local machine: bumps the version in all 4 places (package.json, banner.txt, main.js, README), promotes the CHANGELOG `[Unreleased]` section (leaving a fresh empty one above it), runs unit + E2E tests, builds, commits, tags, and publishes a GitHub Release with dist attached
 - It requires a non-empty `[Unreleased]` section in CHANGELOG.md - add release notes before triggering
 - Inputs: `bump` (patch/minor/major) and optional `summary` (appended to the commit message)
 - Trigger it from Claude Code on the web via the GitHub Actions trigger tool, or from the GitHub Actions tab
