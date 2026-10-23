@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { CFG } from '../../src/modules/config.js';
 import { getCandidateElements, isStructuredContent } from '../../src/modules/dom.js';
+import { diagnoseElement } from '../../src/modules/inspection.js';
 
 const NO_EXCLUDES = { self: [], ancestors: [] };
 
@@ -27,6 +28,12 @@ describe('isStructuredContent', () => {
 
     div.innerHTML = '<table><tr><td>Cell</td></tr></table>';
     expect(isStructuredContent(div)).toBe(true);
+  });
+
+  it('detects an element that is itself a list', () => {
+    const ul = document.createElement('ul');
+    ul.innerHTML = '<li>First item text</li><li>Second item text</li>';
+    expect(isStructuredContent(ul)).toBe(true);
   });
 
   it('does not flag plain or nested-link headlines', () => {
@@ -60,5 +67,37 @@ describe('getCandidateElements', () => {
     const els = getCandidateElements(document, ['h3'], excludes).map(r => r.el);
     expect(els).toHaveLength(1);
     expect(els[0].textContent).toBe('Another heading that should still be found');
+  });
+});
+
+describe('diagnoseElement', () => {
+  beforeEach(() => {
+    // jsdom has no CSS.escape, which generateCSSSelector uses
+    globalThis.CSS ??= { escape: (s) => String(s) };
+    document.body.innerHTML = SUMMARY_HTML;
+  });
+
+  it('reports a matched heading that wraps a list as skipped, not processed', () => {
+    const h3 = document.querySelector('h3');
+    const diag = diagnoseElement(h3, ['h1', 'h3'], [], NO_EXCLUDES, NO_EXCLUDES, NO_EXCLUDES);
+    expect(diag.isProcessed).toBe(false);
+    expect(diag.skipReasons).toHaveLength(1);
+    expect(diag.skipReasons[0]).toMatch(/list, table or quote/);
+  });
+
+  it('reports a matched plain headline as processed with no skip reasons', () => {
+    const h1 = document.querySelector('h1');
+    const diag = diagnoseElement(h1, ['h1', 'h3'], [], NO_EXCLUDES, NO_EXCLUDES, NO_EXCLUDES);
+    expect(diag.isProcessed).toBe(true);
+    expect(diag.skipReasons).toEqual([]);
+  });
+
+  it('reports selector matches over the length limit as skipped', () => {
+    const h3 = document.createElement('h3');
+    h3.textContent = 'word '.repeat(Math.ceil(CFG.sanityCheckLen / 5) + 5);
+    document.body.appendChild(h3);
+    const diag = diagnoseElement(h3, ['h3'], [], NO_EXCLUDES, NO_EXCLUDES, NO_EXCLUDES);
+    expect(diag.isProcessed).toBe(false);
+    expect(diag.skipReasons[0]).toMatch(/limit for selector matches/);
   });
 });

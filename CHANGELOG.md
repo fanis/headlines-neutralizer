@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Headings that wrap a list, table or quote are no longer treated as headlines. On politis.com.cy the mobile "Συνοπτικά από ΠΟΛΙΤΗΣ" AI summary sits inside an `<h3>` accordion button, so the default `h3` selector matched the whole summary. Rewriting it also flattened its bullet list into plain text.
+- Inspection mode now explains when a matched element is skipped (it contains a list, table or quote, or is over 500 characters) instead of reporting it as being processed, and no longer offers to add a selector for it.
 - Excluding an element matched by a selector now also excludes the inner element the script rewrites. Before, excluding such a heading (for example the politis.com.cy summary `<h3>`) showed it as excluded in "Show included elements", but its inner button was still rewritten.
 
 ## [2.7.1] - 2026-10-02

@@ -262,7 +262,7 @@ export function exitIncludedElements() {
 /**
  * Diagnose element for headline detection
  */
-function diagnoseElement(el, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_GLOBAL, EXCLUDE_DOMAIN, EXCLUDE) {
+export function diagnoseElement(el, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_GLOBAL, EXCLUDE_DOMAIN, EXCLUDE) {
   const text = textTrim(el);
   const selector = generateCSSSelector(el);
 
@@ -307,8 +307,23 @@ function diagnoseElement(el, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_GLOBAL,
   const globalExclusions = findMatchingExclusions(el, EXCLUDE_GLOBAL);
   const domainExclusions = findMatchingExclusions(el, EXCLUDE_DOMAIN);
 
+  // Matches are rewritten through their text host; mirror the checks that
+  // getCandidateElements and attachTargets apply to it before processing
+  const matchedBySelector = globalSelectors.length > 0 || domainSelectors.length > 0;
+  const skipReasons = [];
+  if (matchedBySelector || autoDetect.matched) {
+    const textHost = findTextHost(el);
+    if (isStructuredContent(textHost)) {
+      skipReasons.push('Contains a list, table or quote, so it is not treated as a headline');
+    }
+    const hostLen = textTrim(textHost).length;
+    if (matchedBySelector && hostLen > CFG.sanityCheckLen) {
+      skipReasons.push(`Text is ${hostLen} characters, over the ${CFG.sanityCheckLen}-character limit for selector matches (unless this site has a long-text exception from an earlier version)`);
+    }
+  }
+
   const hasOptOut = publisherOptOut();
-  const isProcessed = !isExcluded(el, EXCLUDE) && (autoDetect.matched || globalSelectors.length > 0 || domainSelectors.length > 0);
+  const isProcessed = !isExcluded(el, EXCLUDE) && skipReasons.length === 0 && (autoDetect.matched || matchedBySelector);
 
   return {
     element: el,
@@ -324,6 +339,7 @@ function diagnoseElement(el, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_GLOBAL,
     domainExclusions,
     hasOptOut,
     isExcluded: isExcluded(el, EXCLUDE),
+    skipReasons,
     isProcessed
   };
 }
@@ -476,6 +492,9 @@ function showDiagnosticDialog(el, HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCL
   if (diag.isExcluded) {
     statusClass = 'excluded';
     statusText = '⚠️ EXCLUDED - Not being processed';
+  } else if (diag.skipReasons.length > 0) {
+    statusClass = 'excluded';
+    statusText = '⚠️ SKIPPED - Matched, but not a headline';
   } else if (diag.isProcessed) {
     statusClass = 'processed';
     statusText = '✅ MATCHED - Being processed';
@@ -524,6 +543,11 @@ function showDiagnosticDialog(el, HOST, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCL
       </div>
 
       <div class="status ${statusClass}">${statusText}</div>
+
+      ${diag.skipReasons.length > 0 ? `<div class="section">
+        <div class="section-title">Why It Is Skipped</div>
+        <ul class="list">${diag.skipReasons.map(r => `<li class="problem">✗ ${escapeHtml(r)}</li>`).join('')}</ul>
+      </div>` : ''}
 
       <div class="section">
         <div class="section-title">Auto-Detection Analysis</div>
@@ -626,7 +650,8 @@ function buildActionButtons(diag, HOST) {
     });
   }
 
-  if (!diag.isProcessed && !diag.isExcluded) {
+  // Adding a selector cannot help an element that is skipped as not a headline
+  if (!diag.isProcessed && !diag.isExcluded && diag.skipReasons.length === 0) {
     buttons.push(`<button class="btn success add-global-sel">Add as Global Selector</button>`);
     buttons.push(`<button class="btn success add-domain-sel">Add as Domain Selector</button>`);
   }

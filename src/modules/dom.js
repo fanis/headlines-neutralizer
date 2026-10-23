@@ -200,10 +200,12 @@ export function findTextHost(el) {
  * Check if element holds structured content (lists, tables, quotes) rather
  * than a headline. Headings and selectors like `.summary` can wrap whole
  * blocks, such as an accordion `<h3><button>` around an AI-summary bullet list;
- * rewriting them sends long text to the API and flattens the markup.
+ * rewriting them sends long text to the API and flattens the markup. The
+ * element itself counts too: a text host can resolve to a bare <ul>.
  */
+const STRUCTURED_SELECTOR = 'ul, ol, dl, table, blockquote';
 export function isStructuredContent(el) {
-  return !!el.querySelector?.('ul, ol, dl, table, blockquote');
+  return !!(el.matches?.(STRUCTURED_SELECTOR) || el.querySelector?.(STRUCTURED_SELECTOR));
 }
 
 /**
