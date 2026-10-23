@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { CFG } from '../../src/modules/config.js';
-import { getCandidateElements, isStructuredContent } from '../../src/modules/dom.js';
+import { getCandidateElements, isStructuredContent, isArticlePage } from '../../src/modules/dom.js';
 import { diagnoseElement } from '../../src/modules/inspection.js';
 
 const NO_EXCLUDES = { self: [], ancestors: [] };
@@ -58,14 +58,17 @@ describe('getCandidateElements', () => {
     expect(els.some(el => el.closest('h3'))).toBe(false);
   });
 
-  it('skips selector matches shorter than the minimum length, such as section labels', () => {
+  it('skips matches under 3 words or 8 characters, such as section labels', () => {
     document.body.innerHTML = `
       <h2>Sport</h2>
       <h2><a href="#">Κόσμος</a></h2>
+      <h2>Most read</h2>
+      <h2>ΣΧΕΤΙΚΑ ΝΕΑ</h2>
+      <h2>Ενας βάρβαρος πόλεμος</h2>
       <h2>Council approves new budget for schools</h2>
     `;
     const els = getCandidateElements(document, ['h2'], NO_EXCLUDES).map(r => r.el);
-    expect(els.map(el => el.textContent)).toEqual(['Council approves new budget for schools']);
+    expect(els.map(el => el.textContent)).toEqual(['Ενας βάρβαρος πόλεμος', 'Council approves new budget for schools']);
   });
 
   it('applies a self exclusion on the matched element to its inner text host', () => {
@@ -77,6 +80,77 @@ describe('getCandidateElements', () => {
     const els = getCandidateElements(document, ['h3'], excludes).map(r => r.el);
     expect(els).toHaveLength(1);
     expect(els[0].textContent).toBe('Another heading that should still be found');
+  });
+});
+
+const ARTICLE_LD = '<script type="application/ld+json">{"@context":"https://schema.org","@type":"NewsArticle","headline":"x"}</script>';
+
+// Article page: headline, intro and subheading inside the article, plus
+// related links below it
+const ARTICLE_HTML = `
+  <article>
+    <h1>Lawsuit filed against beverage maker over occupied factory</h1>
+    <h2 class="lead">Before filing, the owners wrote to the companies asking them to leave</h2>
+    <div itemprop="articleBody">
+      <p>Body text.</p>
+      <h3>India: «This is only the beginning!»</h3>
+    </div>
+    <section class="related">
+      <h3><a href="/other">Earthquake shakes Tibet, sixteen dead and hundreds of homes destroyed</a></h3>
+    </section>
+  </article>
+  <aside class="most-read"><h3><a href="/third">Flood risk map shows the 43 most exposed areas</a></h3></aside>
+`;
+
+describe('isArticlePage', () => {
+  afterEach(() => { document.head.innerHTML = ''; });
+  const ld = (json) => { document.head.innerHTML = `<script type="application/ld+json">${json}</script>`; };
+
+  it('detects a top-level JSON-LD article type', () => {
+    ld('{"@type":"NewsArticle"}');
+    expect(isArticlePage()).toBe(true);
+    ld('[{"@type":"WebPage"},{"@type":["Article","Thing"]}]');
+    expect(isArticlePage()).toBe(true);
+    ld('{"@context":"https://schema.org","@graph":[{"@type":"WebSite"},{"@type":"ReportageNewsArticle"}]}');
+    expect(isArticlePage()).toBe(true);
+  });
+
+  it('does not treat listings, live blogs or og:type alone as articles', () => {
+    ld('{"@type":"ItemList","itemListElement":[{"@type":"NewsArticle"},{"@type":"NewsArticle"}]}');
+    expect(isArticlePage()).toBe(false);
+    ld('{"@type":"LiveBlogPosting"}');
+    expect(isArticlePage()).toBe(false);
+    document.head.innerHTML = '<meta property="og:type" content="article">';
+    expect(isArticlePage()).toBe(false);
+  });
+
+  it('ignores invalid JSON-LD', () => {
+    ld('{"@type": "NewsArticle",');
+    expect(isArticlePage()).toBe(false);
+  });
+});
+
+describe('getCandidateElements on article pages', () => {
+  let autoDetect;
+  beforeEach(() => {
+    autoDetect = CFG.autoDetect;
+    CFG.autoDetect = false;
+    document.body.innerHTML = ARTICLE_HTML;
+  });
+  afterEach(() => { CFG.autoDetect = autoDetect; document.head.innerHTML = ''; });
+  const texts = () => getCandidateElements(document, ['h1', 'h2', 'h3'], NO_EXCLUDES).map(r => r.el.textContent);
+
+  it('keeps the headline and links to other articles, skipping the article text', () => {
+    document.head.innerHTML = ARTICLE_LD;
+    expect(texts()).toEqual([
+      'Lawsuit filed against beverage maker over occupied factory',
+      'Earthquake shakes Tibet, sixteen dead and hundreds of homes destroyed',
+      'Flood risk map shows the 43 most exposed areas'
+    ]);
+  });
+
+  it('keeps everything when the page is not an article', () => {
+    expect(texts()).toHaveLength(5);
   });
 });
 
@@ -108,7 +182,7 @@ describe('diagnoseElement', () => {
     document.body.appendChild(h2);
     const diag = diagnoseElement(h2, ['h2'], [], NO_EXCLUDES, NO_EXCLUDES, NO_EXCLUDES);
     expect(diag.isProcessed).toBe(false);
-    expect(diag.skipReasons[0]).toMatch(/minimum for headlines/);
+    expect(diag.skipReasons[0]).toMatch(/too short to be a headline/);
   });
 
   it('reports selector matches over the length limit as skipped', () => {
@@ -118,5 +192,15 @@ describe('diagnoseElement', () => {
     const diag = diagnoseElement(h3, ['h3'], [], NO_EXCLUDES, NO_EXCLUDES, NO_EXCLUDES);
     expect(diag.isProcessed).toBe(false);
     expect(diag.skipReasons[0]).toMatch(/limit for selector matches/);
+  });
+
+  it('reports article text on an article page as skipped', () => {
+    document.head.innerHTML = ARTICLE_LD;
+    document.body.innerHTML = ARTICLE_HTML;
+    const lead = document.querySelector('h2.lead');
+    const diag = diagnoseElement(lead, ['h2'], [], NO_EXCLUDES, NO_EXCLUDES, NO_EXCLUDES);
+    document.head.innerHTML = '';
+    expect(diag.isProcessed).toBe(false);
+    expect(diag.skipReasons[0]).toMatch(/article text on an article page/);
   });
 });

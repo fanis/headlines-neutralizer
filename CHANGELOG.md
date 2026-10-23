@@ -10,12 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **No more "Excessively Long Headlines Detected" prompt.** Text longer than 500 characters matched by selectors is now skipped silently instead of asking what to do on every page. Headlines are never that long, so these matches are summaries, menus or article text. Sites with a "Process & Remember" exception from earlier versions keep it, and the menu command to clear it remains.
-
-- **Selector matches shorter than 8 characters are skipped**, the same minimum auto-detect already used. Section headings such as "Sport", "Κόσμος" or "Opinion" matched the default `h2`/`h3` selectors and were sent to the API on every site. On a sample of 13 news pages they were 5% of all matches.
+- **Candidates under 3 words or 8 characters are skipped.** Section headings such as "Sport", "Most read" or "ΣΧΕΤΙΚΑ ΝΕΑ" matched the default `h2`/`h3` selectors and were sent to the API on every site. On a sample of 21 news pages they were 11% of all matches, and every one- or two-word match was a label, name or recipe title.
+- **Article pages: only the main headline and links to other articles are processed.** On a page that declares itself a single article (a JSON-LD `NewsArticle`, `Article` or similar), headings and intro paragraphs inside the article are no longer rewritten, so subheadings, pull quotes and summaries keep the author's wording. Related, most-read and latest-news headlines are still neutralized. Live blogs are not treated as articles.
 
 ### Fixed
 - Headings that wrap a list, table or quote are no longer treated as headlines. On politis.com.cy the mobile "Συνοπτικά από ΠΟΛΙΤΗΣ" AI summary sits inside an `<h3>` accordion button, so the default `h3` selector matched the whole summary. Rewriting it also flattened its bullet list into plain text.
-- Inspection mode now explains when a matched element is skipped (it contains a list, table or quote, or is under 8 or over 500 characters) instead of reporting it as being processed, and no longer offers to add a selector for it.
+- Inspection mode now explains when a matched element is skipped (it contains a list, table or quote, is too short or over 500 characters, or is article text on an article page) instead of reporting it as being processed, and no longer offers to add a selector for it.
 - Excluding an element matched by a selector now also excludes the inner element the script rewrites. Before, excluding such a heading (for example the politis.com.cy summary `<h3>`) showed it as excluded in "Show included elements", but its inner button was still rewritten.
 
 ## [2.7.1] - 2026-10-02

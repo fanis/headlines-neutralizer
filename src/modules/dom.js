@@ -3,7 +3,7 @@
  */
 
 import { CFG, CARD_SELECTOR, UI_ATTR } from './config.js';
-import { log, textTrim, withinLen, normalizeSpace, isVisible, quoteProtect } from './utils.js';
+import { log, textTrim, withinLen, normalizeSpace, isVisible, quoteProtect, words } from './utils.js';
 import { compiledSelectors } from './selectors.js';
 import { computeCandidateScore, isHardRejectText } from './scoring.js';
 
@@ -209,12 +209,66 @@ export function isStructuredContent(el) {
 }
 
 /**
- * Check if a selector match is too short to be a headline. Section headings
- * such as "Sport" or "Opinion" match h2/h3 selectors; auto-detect already
- * rejects them through its CFG.minLen check.
+ * Check if a candidate is too short to be a headline. Section headings such
+ * as "Sport", "Most read" or "ΣΧΕΤΙΚΑ ΝΕΑ" match h2/h3 selectors; one or two
+ * words leave nothing to neutralize.
  */
 export function isTooShort(el) {
-  return textTrim(el).length < CFG.minLen;
+  const t = textTrim(el);
+  return t.length < CFG.minLen || words(t).length < CFG.minWords;
+}
+
+// schema.org types that mark a page as a single article. LiveBlogPosting is
+// left out: its update titles work like a listing.
+const ARTICLE_TYPES = new Set([
+  'Article', 'NewsArticle', 'ReportageNewsArticle', 'AnalysisNewsArticle',
+  'OpinionNewsArticle', 'BackgroundNewsArticle', 'ReviewNewsArticle', 'BlogPosting'
+]);
+
+/**
+ * Check if the page is a single article rather than a listing, from a
+ * top-level JSON-LD article type. Article types nested inside a listing's
+ * JSON-LD (ItemList entries) do not count. og:type is not used: some
+ * homepages (npr.org) declare og:type=article.
+ */
+export function isArticlePage(doc = document) {
+  for (const script of doc.querySelectorAll('script[type="application/ld+json"]')) {
+    let data;
+    try { data = JSON.parse(script.textContent); } catch { continue; }
+    const items = [data].flat().flatMap(d => (d && d['@graph']) ? [d, ...[d['@graph']].flat()] : [d]);
+    if (items.some(d => [d?.['@type']].flat().some(t => ARTICLE_TYPES.has(t)))) return true;
+  }
+  return false;
+}
+
+/**
+ * Check if a candidate is part of the article's own text: inside the article
+ * body, or inside an <article> that holds the page headline (h1). The h1
+ * itself and links to other articles (related, most read) stay candidates.
+ */
+export function isArticleContent(el) {
+  if (el.closest('h1')) return false;
+  if (el.closest('a[href]') || el.querySelector('a[href]')) return false;
+  if (el.closest('[itemprop="articleBody"]')) return true;
+  return !!el.closest('article')?.querySelector('h1');
+}
+
+/**
+ * Reasons a candidate text host is skipped as not a headline (empty when it
+ * is processed). Shared by the pipeline and the inspection views so they agree.
+ */
+export function getSkipReasons(el, articlePage) {
+  const reasons = [];
+  if (isStructuredContent(el)) {
+    reasons.push('Contains a list, table or quote, so it is not treated as a headline');
+  }
+  if (isTooShort(el)) {
+    reasons.push(`Shorter than ${CFG.minWords} words or ${CFG.minLen} characters, too short to be a headline`);
+  }
+  if (articlePage && isArticleContent(el)) {
+    reasons.push('Part of the article text on an article page (only the main headline and links to other articles are processed)');
+  }
+  return reasons;
 }
 
 /**
@@ -299,12 +353,12 @@ export function getCandidateElements(root, SELECTORS, EXCLUDE) {
     .filter(el => !isExcluded(el, EXCLUDE))
     .map(el => ({ el: findTextHost(el), mode: 'manual' }));
   const auto = discoverCandidates(root, EXCLUDE).map(el => ({ el, mode: 'auto' }));
+  const articlePage = isArticlePage();
   const uniq = [];
   const seen = new Set();
   for (const rec of [...manual, ...auto]) {
     const el = rec.el;
-    if (!el || isExcluded(el, EXCLUDE) || isStructuredContent(el)) continue;
-    if (rec.mode === 'manual' && isTooShort(el)) continue;
+    if (!el || isExcluded(el, EXCLUDE) || getSkipReasons(el, articlePage).length) continue;
     if (seen.has(el)) continue;
     seen.add(el);
     uniq.push(rec);

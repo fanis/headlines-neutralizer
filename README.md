@@ -72,6 +72,7 @@
   - Visual flash animation when headlines are neutralized
   - **API usage tracking and cost monitoring** with real token counts and configurable pricing
   - **Sanity check for long headlines** - Skips text > 500 characters and headings that wrap lists or tables (summaries, menus), so they don't waste tokens
+  - **Skips labels and article text** - Ignores section labels under 3 words, and on article pages rewrites only the main headline and links to other articles, not subheadings or quotes inside the article
   - Stats dialog shows API usage, cache statistics, and all changes
 
   ---
@@ -402,7 +403,7 @@ For detailed documentation:
      - The diagnostic dialog will show exactly why it's not being processed:
        - ❌ Not matched by selectors → Use "Add as Global/Domain Selector" button
        - ⚠️ Excluded by a rule → Use "Remove Exclusion" button
-       - ✅ Matched → Check if it's over 500 characters or contains a list or table (sanity check skips it)
+       - ⚠️ Skipped → The dialog lists why: a list or table inside, under 3 words, over 500 characters, or article text on an article page
   2. Try manual selectors:
      - For all sites: Menu → "Edit GLOBAL target selectors"
      - For this site only: Menu → "Edit DOMAIN additions: target selectors"

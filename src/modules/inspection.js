@@ -6,7 +6,7 @@ import { UI_ATTR, CFG, CARD_SELECTOR, UI_CONTAINERS, STORAGE_KEYS } from './conf
 import { textTrim, withinLen, escapeHtml } from './utils.js';
 import { compiledSelectors } from './selectors.js';
 import { isLikelyKicker } from './scoring.js';
-import { isExcluded, isStructuredContent, isTooShort, findTextHost, publisherOptOut } from './dom.js';
+import { isExcluded, getSkipReasons, isArticlePage, findTextHost, publisherOptOut } from './dom.js';
 
 let inspectionOverlay = null;
 let inspectedElement = null;
@@ -194,13 +194,12 @@ export function showIncludedElements(SELECTORS, EXCLUDE) {
     try { manualEls = [...document.querySelectorAll(selectorStr)]; } catch {}
   }
   const manualSet = new Set(manualEls);
+  const articlePage = isArticlePage();
 
   for (const el of manualEls) {
     if (el.closest(`[${UI_ATTR}]`)) continue;
-    // Mirror getCandidateElements: structured blocks (lists, tables) and short
-    // labels are skipped
-    const textHost = findTextHost(el);
-    const excluded = isExcluded(el, EXCLUDE) || isStructuredContent(textHost) || isTooShort(textHost);
+    // Mirror getCandidateElements, which skips hosts that are not headlines
+    const excluded = isExcluded(el, EXCLUDE) || getSkipReasons(findTextHost(el), articlePage).length > 0;
     const color = excluded ? '#ea4335' : '#34a853';
     saved.push({ el, boxShadow: el.style.boxShadow });
     el.style.boxShadow = `inset 0 0 0 2px ${color}`;
@@ -315,13 +314,8 @@ export function diagnoseElement(el, SELECTORS_GLOBAL, SELECTORS_DOMAIN, EXCLUDE_
   const skipReasons = [];
   if (matchedBySelector || autoDetect.matched) {
     const textHost = findTextHost(el);
-    if (isStructuredContent(textHost)) {
-      skipReasons.push('Contains a list, table or quote, so it is not treated as a headline');
-    }
+    skipReasons.push(...getSkipReasons(textHost, isArticlePage()));
     const hostLen = textTrim(textHost).length;
-    if (isTooShort(textHost)) {
-      skipReasons.push(`Text is ${hostLen} characters, under the ${CFG.minLen}-character minimum for headlines`);
-    }
     if (matchedBySelector && hostLen > CFG.sanityCheckLen) {
       skipReasons.push(`Text is ${hostLen} characters, over the ${CFG.sanityCheckLen}-character limit for selector matches (unless this site has a long-text exception from an earlier version)`);
     }
