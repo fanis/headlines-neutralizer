@@ -87,7 +87,7 @@ Before each release or after major changes, verify these core features work corr
 - [ ] **Invalid API key** shows error message
 - [ ] **Network error** shows friendly error
 - [ ] **Empty page** doesn't crash
-- [ ] **Very long headlines** trigger sanity check dialog
+- [ ] **Very long headlines** (> 500 chars) and headings wrapping lists are skipped without a prompt
 - [ ] **Dynamic content** (AJAX-loaded) is detected
 
 ### Cross-Site Compatibility
