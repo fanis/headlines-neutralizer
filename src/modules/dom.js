@@ -197,6 +197,16 @@ export function findTextHost(el) {
 }
 
 /**
+ * Check if element holds structured content (lists, tables, quotes) rather
+ * than a headline. Headings and selectors like `.summary` can wrap whole
+ * blocks, such as an accordion `<h3><button>` around an AI-summary bullet list;
+ * rewriting them sends long text to the API and flattens the markup.
+ */
+export function isStructuredContent(el) {
+  return !!el.querySelector?.('ul, ol, dl, table, blockquote');
+}
+
+/**
  * Get manually matched elements via selectors
  */
 export function getManualMatches(root, SELECTORS) {
@@ -272,13 +282,17 @@ export function discoverCandidates(root, EXCLUDE) {
  * Get all candidate elements (manual + auto)
  */
 export function getCandidateElements(root, SELECTORS, EXCLUDE) {
-  const manual = getManualMatches(root, SELECTORS).map(el => ({ el: findTextHost(el), mode: 'manual' }));
+  // Check exclusions on the matched element too, not only on the text host it
+  // resolves to: excluding a matched heading must also exclude its inner host
+  const manual = getManualMatches(root, SELECTORS)
+    .filter(el => !isExcluded(el, EXCLUDE))
+    .map(el => ({ el: findTextHost(el), mode: 'manual' }));
   const auto = discoverCandidates(root, EXCLUDE).map(el => ({ el, mode: 'auto' }));
   const uniq = [];
   const seen = new Set();
   for (const rec of [...manual, ...auto]) {
     const el = rec.el;
-    if (!el || isExcluded(el, EXCLUDE)) continue;
+    if (!el || isExcluded(el, EXCLUDE) || isStructuredContent(el)) continue;
     if (seen.has(el)) continue;
     seen.add(el);
     uniq.push(rec);

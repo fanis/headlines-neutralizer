@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **No more "Excessively Long Headlines Detected" prompt.** Text longer than 500 characters matched by selectors is now skipped silently instead of asking what to do on every page. Headlines are never that long, so these matches are summaries, menus or article text. Sites with a "Process & Remember" exception from earlier versions keep it, and the menu command to clear it remains.
+
+### Fixed
+- Headings that wrap a list, table or quote are no longer treated as headlines. On politis.com.cy the mobile "Συνοπτικά από ΠΟΛΙΤΗΣ" AI summary sits inside an `<h3>` accordion button, so the default `h3` selector matched the whole summary. Rewriting it also flattened its bullet list into plain text.
+- Excluding an element matched by a selector now also excludes the inner element the script rewrites. Before, excluding such a heading (for example the politis.com.cy summary `<h3>`) showed it as excluded in "Show included elements", but its inner button was still rewritten.
+
 ## [2.7.1] - 2026-10-02
 
 ### Fixed

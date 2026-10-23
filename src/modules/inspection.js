@@ -6,7 +6,7 @@ import { UI_ATTR, CFG, CARD_SELECTOR, UI_CONTAINERS, STORAGE_KEYS } from './conf
 import { textTrim, withinLen, escapeHtml } from './utils.js';
 import { compiledSelectors } from './selectors.js';
 import { isLikelyKicker } from './scoring.js';
-import { isExcluded, publisherOptOut } from './dom.js';
+import { isExcluded, isStructuredContent, findTextHost, publisherOptOut } from './dom.js';
 
 let inspectionOverlay = null;
 let inspectedElement = null;
@@ -197,7 +197,8 @@ export function showIncludedElements(SELECTORS, EXCLUDE) {
 
   for (const el of manualEls) {
     if (el.closest(`[${UI_ATTR}]`)) continue;
-    const excluded = isExcluded(el, EXCLUDE);
+    // Mirror getCandidateElements: structured blocks (lists, tables) are skipped
+    const excluded = isExcluded(el, EXCLUDE) || isStructuredContent(findTextHost(el));
     const color = excluded ? '#ea4335' : '#34a853';
     saved.push({ el, boxShadow: el.style.boxShadow });
     el.style.boxShadow = `inset 0 0 0 2px ${color}`;

@@ -37,7 +37,7 @@ import { HeadlineCache } from './modules/cache.js';
 import { domainPatternToRegex, listMatchesHost } from './modules/selectors.js';
 import { initApiTracking, rewriteBatch, resetApiTokens, updatePricing, calculateApiCost, validateApiKey, API_TOKENS, PRICING, MODEL_NOTICE, MODEL_UNSAVED, isQuotaExhausted } from './modules/api.js';
 import { ensureHighlightCSS, isExcluded, getCandidateElements, applyRewrites, restoreOriginals, publisherOptOut } from './modules/dom.js';
-import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openModelSelectionDialog, showLongHeadlineDialog, showDiffAudit, openSelectorEditor, showToast } from './modules/settings.js';
+import { openEditor, openInfo, openKeyDialog, openWelcomeDialog, openModelSelectionDialog, showDiffAudit, openSelectorEditor, showToast } from './modules/settings.js';
 import { ensureBadge, updateBadgeCounts, reapplyFromCache } from './modules/badge.js';
 import { enterInspectionMode, showIncludedElements, exitIncludedElements } from './modules/inspection.js';
 
@@ -174,7 +174,6 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   let IO = null;
   const pending = new Set();
   let flushTimer = null;
-  let longHeadlineCheckPending = false;
   // Set when the API can no longer succeed without user action (e.g. exhausted
   // credits/quota). Stops further flushes so we don't hammer a failing endpoint.
   let apiHalted = false;
@@ -309,7 +308,7 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
   }
 
   // Attach targets
-  async function attachTargets(root = document) {
+  function attachTargets(root = document) {
     // getCandidateElements already resolves each match to its text host
     const candidates = getCandidateElements(root, SELECTORS, EXCLUDE)
       .filter(({ el, mode }) => {
@@ -318,37 +317,17 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
         return true;
       });
 
-    const excessivelyLong = [];
-    const hostsToAttach = [];
-
     for (const { el: host, mode } of candidates) {
       const text = textTrim(host);
 
+      // Manual selectors can match containers (summaries, article bodies) instead
+      // of headlines. Skip those silently rather than spending tokens on them;
+      // a stored per-domain exception from earlier versions still allows them.
       if (mode === 'manual' && text.length > CFG.sanityCheckLen && !LONG_HEADLINE_EXCEPTIONS[HOST]) {
-        excessivelyLong.push({ host, text, length: text.length });
-      } else {
-        hostsToAttach.push({ host, mode, text });
+        log(`skipping manual match longer than ${CFG.sanityCheckLen} chars (${text.length}):`, text.slice(0, 80));
+        continue;
       }
-    }
 
-    if (excessivelyLong.length > 0 && !longHeadlineCheckPending) {
-      longHeadlineCheckPending = true;
-      const result = await showLongHeadlineDialog(excessivelyLong, HOST, CFG);
-      longHeadlineCheckPending = false;
-
-      if (result) {
-        for (const { host, text } of excessivelyLong) {
-          hostsToAttach.push({ host, mode: 'manual', text });
-        }
-
-        if (result === true) {
-          LONG_HEADLINE_EXCEPTIONS[HOST] = true;
-          await storage.set(STORAGE_KEYS.LONG_HEADLINE_EXCEPTIONS, JSON.stringify(LONG_HEADLINE_EXCEPTIONS));
-        }
-      }
-    }
-
-    for (const { host, mode, text } of hostsToAttach) {
       host.setAttribute('data-neutralizer-mode', mode);
       let set = textToElements.get(text);
       if (!set) { set = new Set(); textToElements.set(text, set); }
@@ -429,7 +408,7 @@ import { enterInspectionMode, showIncludedElements, exitIncludedElements } from 
 
   if (LONG_HEADLINE_EXCEPTIONS[HOST]) {
     registerMenuCommand(`Clear long headline exception (${HOST})`, async () => {
-      if (confirm(`Clear the long headline exception for ${HOST}?\n\nYou'll be prompted again if selectors match text longer than ${CFG.sanityCheckLen} characters.`)) {
+      if (confirm(`Clear the long headline exception for ${HOST}?\n\nText longer than ${CFG.sanityCheckLen} characters matched by selectors will be skipped again.`)) {
         delete LONG_HEADLINE_EXCEPTIONS[HOST];
         await storage.set(STORAGE_KEYS.LONG_HEADLINE_EXCEPTIONS, JSON.stringify(LONG_HEADLINE_EXCEPTIONS));
         openInfo(`Cleared long headline exception for ${HOST}.\n\nReload the page to see changes.`);

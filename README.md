@@ -71,7 +71,7 @@
   - On-page badge to restore/reapply changes
   - Visual flash animation when headlines are neutralized
   - **API usage tracking and cost monitoring** with real token counts and configurable pricing
-  - **Sanity check for long headlines** - Warns before processing text > 500 characters (prevents token waste)
+  - **Sanity check for long headlines** - Skips text > 500 characters and headings that wrap lists or tables (summaries, menus), so they don't waste tokens
   - Stats dialog shows API usage, cache statistics, and all changes
 
   ---
@@ -402,7 +402,7 @@ For detailed documentation:
      - The diagnostic dialog will show exactly why it's not being processed:
        - ❌ Not matched by selectors → Use "Add as Global/Domain Selector" button
        - ⚠️ Excluded by a rule → Use "Remove Exclusion" button
-       - ✅ Matched → Check if it's over 500 characters (sanity check blocking it)
+       - ✅ Matched → Check if it's over 500 characters or contains a list or table (sanity check skips it)
   2. Try manual selectors:
      - For all sites: Menu → "Edit GLOBAL target selectors"
      - For this site only: Menu → "Edit DOMAIN additions: target selectors"
