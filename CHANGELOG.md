@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.1] - 2026-10-23
+
 ### Fixed
 - "Show included elements" highlighted every heading and card that auto-detect looks at in blue, including author names and whole article cards that are never rewritten. Blue now marks only what auto-detect actually adds, after scoring and the skip rules, so the view and the auto-detected count match what the script processes.
 

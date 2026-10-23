@@ -3,7 +3,7 @@
 // @namespace    https://fanis.dev/userscripts
 // @author       Fanis Hatzidakis
 // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-// @version      2.8.0
+// @version      2.8.1
 // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
 // @match        *://*/*
 // @exclude      about:*
@@ -2802,25 +2802,14 @@
       if (excluded) excludedCount++; else includedCount++;
     }
 
-    // Auto-detected candidates (if autoDetect is on)
+    // Auto-detected candidates: what processing actually picks (scoring, skip
+    // rules, exclusions), not every heading the auto-detector looks at
     if (CFG.autoDetect) {
-      const seedSets = [
-        document.querySelectorAll('h1, h2, h3, h4, [role="heading"], [aria-level], [itemprop="headline"]'),
-        document.querySelectorAll('.lead, .deck, .standfirst, .subhead, .kicker, .teaser, .title, .headline'),
-        document.querySelectorAll(`${CARD_SELECTOR} h1, ${CARD_SELECTOR} h2, ${CARD_SELECTOR} h3, ${CARD_SELECTOR} a`)
-      ];
-      const seen = new Set(manualEls);
-      for (const list of seedSets) {
-        for (const el of list) {
-          if (!el || seen.has(el) || el.closest(`[${UI_ATTR}]`)) continue;
-          seen.add(el);
-          const excluded = isExcluded(el, EXCLUDE);
-          if (!excluded && !manualSet.has(el)) {
-            saved.push({ el, boxShadow: el.style.boxShadow });
-            el.style.boxShadow = 'inset 0 0 0 2px #1a73e8';
-            autoCount++;
-          }
-        }
+      for (const { el, mode } of getCandidateElements(document, SELECTORS, EXCLUDE)) {
+        if (mode !== 'auto' || manualSet.has(el)) continue;
+        saved.push({ el, boxShadow: el.style.boxShadow });
+        el.style.boxShadow = 'inset 0 0 0 2px #1a73e8';
+        autoCount++;
       }
     }
 
@@ -3328,7 +3317,7 @@
   // @namespace    https://fanis.dev/userscripts
   // @author       Fanis Hatzidakis
   // @license      PolyForm-Internal-Use-1.0.0; https://polyformproject.org/licenses/internal-use/1.0.0/
-  // @version      2.8.0
+  // @version      2.8.1
   // @description  Tone down sensationalist titles via OpenAI API. Auto-detect + manual selectors, exclusions, per-domain configs, domain allow/deny, caching, Android-safe storage.
   // @match        *://*/*
   // @exclude      about:*
